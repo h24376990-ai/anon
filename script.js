@@ -1,76 +1,57 @@
-// 募集を送信
-document.getElementById("recruit-button").addEventListener("click", async () => {
-  const recruitText = document.getElementById("recruit-input").value;
-  if (recruitText.trim() === "") return;
+const chatContainer = document.getElementById('chatContainer');
+const sendBtn = document.getElementById('sendBtn');
+const nameInput = document.getElementById('nameInput');
+const iconInput = document.getElementById('iconInput');
+const messageInput = document.getElementById('messageInput');
 
-  const username = document.getElementById("username-input").value || "名無し";
+// 送信ボタンの処理
+sendBtn.addEventListener('click', () => {
+  const name = nameInput.value.trim() || '名無し';
+  const icon = iconInput.value.trim();
+  const messageText = messageInput.value.trim();
+  if (!messageText) return;
 
-  await db.collection("messages").add({
-    username,
-    message: `[募集] ${recruitText}`,
-    iconURL: "",
-    imageURL: "",
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    isRecruit: true
-  });
+  addMessage(name, icon, messageText);
 
-  document.getElementById("recruit-input").value = "";
+  messageInput.value = '';
 });
 
-// メッセージ送信関数にID追加
-const sendMessage = async () => {
-  const username = document.getElementById("username-input").value || "名無し";
-  const iconURL = document.getElementById("icon-input").value || "";
-  const message = document.getElementById("message-input").value;
-  const imageFile = document.getElementById("image-input").files[0];
+// メッセージをチャットに追加する関数
+function addMessage(name, icon, text) {
+  const messageDiv = document.createElement('div');
+  messageDiv.classList.add('message');
 
-  if (message.trim() === "" && !imageFile) return;
-
-  let imageURL = "";
-  if (imageFile) {
-    const storageRef = storage.ref().child(`images/${Date.now()}_${imageFile.name}`);
-    await storageRef.put(imageFile);
-    imageURL = await storageRef.getDownloadURL();
+  // 自分か他人かを判定（簡易例：名前が「自分」なら self）
+  if (name === '自分') {
+    messageDiv.classList.add('self');
+  } else {
+    messageDiv.classList.add('other');
   }
 
-  const docRef = await db.collection("messages").add({
-    username,
-    iconURL,
-    message,
-    imageURL,
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    isRecruit: false
-  });
+  const bubbleDiv = document.createElement('div');
+  bubbleDiv.classList.add('bubble');
 
-  document.getElementById("message-input").value = "";
-  document.getElementById("image-input").value = "";
-};
+  // 名前表示
+  const nameDiv = document.createElement('div');
+  nameDiv.classList.add('name');
+  nameDiv.textContent = name;
+  bubbleDiv.appendChild(nameDiv);
 
-// 削除用関数
-const deleteMessage = async (id) => {
-  await db.collection("messages").doc(id).delete();
-};
+  // アイコン表示
+  if (icon) {
+    const img = document.createElement('img');
+    img.src = icon;
+    bubbleDiv.appendChild(img);
+  }
 
-// リアルタイム表示（削除ボタン追加）
-db.collection("messages").orderBy("timestamp").onSnapshot(snapshot => {
-  messagesDiv.innerHTML = "";
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    const div = document.createElement("div");
-    div.classList.add("message");
+  // メッセージ本文
+  const textDiv = document.createElement('div');
+  textDiv.textContent = text;
+  bubbleDiv.appendChild(textDiv);
 
-    let html = "";
-    if (data.iconURL) html += `<img src="${data.iconURL}" class="icon"> `;
-    html += `<strong>${data.username}:</strong> ${data.message}`;
-    if (data.imageURL) html += `<br><img src="${data.imageURL}" class="chat-image">`;
+  messageDiv.appendChild(bubbleDiv);
+  chatContainer.appendChild(messageDiv);
 
-    // 自分のメッセージなら削除ボタン追加
-    if (!data.isRecruit && data.username === (document.getElementById("username-input").value || "名無し")) {
-      html += ` <button class="delete-btn" onclick="deleteMessage('${doc.id}')">削除</button>`;
-    }
-
-    div.innerHTML = html;
-    messagesDiv.appendChild(div);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  });
-});
+  // チャットを下までスクロール
+  chatContainer.scrollTop = chatContainer.scrollHeight;
+}
