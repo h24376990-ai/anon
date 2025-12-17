@@ -1,25 +1,106 @@
-.delete-btn {
-  background-color: #ff4d4d;
-  color: white;
+/* ページ全体 */
+body {
+  background-color: #f0f0f0;
+  font-family: 'Helvetica', 'Arial', sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* サイト名 */
+header {
+  background-color: #ffdd99;
+  color: #333;
+  text-align: center;
+  padding: 15px;
+  font-size: 1.8rem;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* チャット全体 */
+.chat-container {
+  max-width: 600px;
+  margin: 20px auto;
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  overflow-y: auto;
+  height: 70vh;
+}
+
+/* 個別メッセージ */
+.message {
+  display: flex;
+  align-items: flex-start;
+  margin: 8px 0;
+}
+
+/* 自分と他人のメッセージ色分け */
+.message.self {
+  justify-content: flex-end;
+}
+
+.message .bubble {
+  max-width: 70%;
+  padding: 10px 12px;
+  border-radius: 15px;
+  position: relative;
+  word-wrap: break-word;
+}
+
+.message.self .bubble {
+  background-color: #a0e7e5;
+  color: #000;
+  border-bottom-right-radius: 0;
+}
+
+.message.other .bubble {
+  background-color: #ffd6a5;
+  color: #000;
+  border-bottom-left-radius: 0;
+}
+
+/* 名前表示 */
+.message .name {
+  font-size: 0.8rem;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+/* 画像メッセージ */
+.message img {
+  max-width: 150px;
+  max-height: 150px;
+  border-radius: 10px;
+  margin-top: 5px;
+}
+
+/* 入力欄 */
+.input-container {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  max-width: 600px;
+  margin: 0 auto 20px auto;
+}
+
+.input-container input,
+.input-container textarea {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.input-container button {
+  padding: 8px 15px;
+  border-radius: 8px;
   border: none;
-  border-radius: 3px;
-  padding: 2px 5px;
+  background-color: #ff9e9d;
+  color: white;
   cursor: pointer;
-  font-size: 12px;
-  margin-left: 5px;
 }
-
-.delete-btn:hover {
-  background-color: #e60000;
-}
-
-/* 募集メッセージは背景色を変える */
-.messages .message:nth-child(odd) {
-  background-color: #e0f7fa;
-}
-.messages .message:nth-child(even) {
-  background-color: #ffe0b2;
-}
-.messages .message[data-recruit="true"] {
-  background-color: #d1c4e9;
+.input-container button:hover {
+  background-color: #ff7f7f;
 }
