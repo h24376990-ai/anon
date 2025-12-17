@@ -1,57 +1,76 @@
-const chatContainer = document.getElementById('chatContainer');
-const sendBtn = document.getElementById('sendBtn');
-const nameInput = document.getElementById('nameInput');
-const iconInput = document.getElementById('iconInput');
-const messageInput = document.getElementById('messageInput');
+// 募集を送信
+document.getElementById("recruit-button").addEventListener("click", async () => {
+  const recruitText = document.getElementById("recruit-input").value;
+  if (recruitText.trim() === "") return;
 
-// 送信ボタンの処理
-sendBtn.addEventListener('click', () => {
-  const name = nameInput.value.trim() || '名無し';
-  const icon = iconInput.value.trim();
-  const messageText = messageInput.value.trim();
-  if (!messageText) return;
+  const username = document.getElementById("username-input").value || "名無し";
 
-  addMessage(name, icon, messageText);
+  await db.collection("messages").add({
+    username,
+    message: `[募集] ${recruitText}`,
+    iconURL: "",
+    imageURL: "",
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    isRecruit: true
+  });
 
-  messageInput.value = '';
+  document.getElementById("recruit-input").value = "";
 });
 
-// メッセージをチャットに追加する関数
-function addMessage(name, icon, text) {
-  const messageDiv = document.createElement('div');
-  messageDiv.classList.add('message');
+// メッセージ送信関数にID追加
+const sendMessage = async () => {
+  const username = document.getElementById("username-input").value || "名無し";
+  const iconURL = document.getElementById("icon-input").value || "";
+  const message = document.getElementById("message-input").value;
+  const imageFile = document.getElementById("image-input").files[0];
 
-  // 自分か他人かを判定（簡易例：名前が「自分」なら self）
-  if (name === '自分') {
-    messageDiv.classList.add('self');
-  } else {
-    messageDiv.classList.add('other');
+  if (message.trim() === "" && !imageFile) return;
+
+  let imageURL = "";
+  if (imageFile) {
+    const storageRef = storage.ref().child(`images/${Date.now()}_${imageFile.name}`);
+    await storageRef.put(imageFile);
+    imageURL = await storageRef.getDownloadURL();
   }
 
-  const bubbleDiv = document.createElement('div');
-  bubbleDiv.classList.add('bubble');
+  const docRef = await db.collection("messages").add({
+    username,
+    iconURL,
+    message,
+    imageURL,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    isRecruit: false
+  });
 
-  // 名前表示
-  const nameDiv = document.createElement('div');
-  nameDiv.classList.add('name');
-  nameDiv.textContent = name;
-  bubbleDiv.appendChild(nameDiv);
+  document.getElementById("message-input").value = "";
+  document.getElementById("image-input").value = "";
+};
 
-  // アイコン表示
-  if (icon) {
-    const img = document.createElement('img');
-    img.src = icon;
-    bubbleDiv.appendChild(img);
-  }
+// 削除用関数
+const deleteMessage = async (id) => {
+  await db.collection("messages").doc(id).delete();
+};
 
-  // メッセージ本文
-  const textDiv = document.createElement('div');
-  textDiv.textContent = text;
-  bubbleDiv.appendChild(textDiv);
+// リアルタイム表示（削除ボタン追加）
+db.collection("messages").orderBy("timestamp").onSnapshot(snapshot => {
+  messagesDiv.innerHTML = "";
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const div = document.createElement("div");
+    div.classList.add("message");
 
-  messageDiv.appendChild(bubbleDiv);
-  chatContainer.appendChild(messageDiv);
+    let html = "";
+    if (data.iconURL) html += `<img src="${data.iconURL}" class="icon"> `;
+    html += `<strong>${data.username}:</strong> ${data.message}`;
+    if (data.imageURL) html += `<br><img src="${data.imageURL}" class="chat-image">`;
 
-  // チャットを下までスクロール
-  chatContainer.scrollTop = chatContainer.scrollHeight;
-}
+    // 自分のメッセージなら削除ボタン追加
+    if (!data.isRecruit && data.username === (document.getElementById("username-input").value || "名無し")) {
+      html += ` <button class="delete-btn" onclick="deleteMessage('${doc.id}')">削除</button>`;
+    }
+
+    div.innerHTML = html;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+});
