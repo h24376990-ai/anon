@@ -2,10 +2,23 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ひまちゃっと</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  test
+  <div class="chat-container">
+    <div class="messages" id="messages"></div>
+
+    <input
+      type="text"
+      id="message-input"
+      placeholder="メッセージを入力..."
+    />
+
+    <button id="send-button">送信</button>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
-
