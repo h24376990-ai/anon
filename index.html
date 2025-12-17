@@ -1,25 +1,14 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ひまチャット風サイト</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <header>ひまチャット風サイト</header>
+<div class="chat-container">
+  <!-- 募集欄 -->
+  <input type="text" id="recruit-input" placeholder="チャット相手を募集する内容を入力..." />
+  <button id="recruit-button">募集する</button>
 
-  <div class="chat-container" id="chatContainer">
-    <!-- メッセージはここに追加される -->
-  </div>
+  <input type="text" id="username-input" placeholder="名前を入力..." />
+  <input type="text" id="icon-input" placeholder="アイコン画像URL（任意）" />
+  <input type="file" id="image-input" accept="image/*" />
 
-  <div class="input-container">
-    <input type="text" id="nameInput" placeholder="名前">
-    <input type="text" id="iconInput" placeholder="アイコンURL">
-    <textarea id="messageInput" placeholder="メッセージ"></textarea>
-    <button id="sendBtn">送信</button>
-  </div>
+  <div class="messages" id="messages"></div>
 
-  <script src="script.js"></script>
-</body>
-</html>
+  <input type="text" id="message-input" placeholder="メッセージを入力..." />
+  <button id="send-button">送信</button>
+</div>
