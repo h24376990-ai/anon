@@ -1,138 +1,79 @@
-/* 基本のスタイル設定 */
 body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-    background-color: #f0f0f0;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0;
+  background-color: #f0f8ff; /* 全体背景色 */
 }
 
-/* コンテナ */
-.container {
-    max-width: 800px;
-    margin: 50px auto;
-    background-color: #ffffff;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
-    padding: 20px;
+h1 {
+  font-family: 'Yu Gothic', sans-serif; /* ゴシック体 */
+  font-size: 2em;
+  margin: 20px 0;
+  color: #3333cc; /* タイトル色 */
 }
 
-/* ヘッダー */
-.header {
-    background-color: #4CAF50;
-    color: white;
-    text-align: center;
-    padding: 20px;
-    border-radius: 8px;
+input, button {
+  padding: 8px;
+  margin: 5px 0;
+  border-radius: 5px;
+  border: 1px solid #ccc;
 }
 
-/* 募集欄 */
-.recruitment-board {
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-radius: 8px;
+.chat-container {
+  width: 90%;
+  max-width: 400px;
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
-.recruitment-board h2 {
-    margin-top: 0;
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  min-height: 200px;
+  border: 1px solid #ddd;
+  padding: 5px;
 }
 
-#recruitmentList {
-    list-style-type: none;
-    padding: 0;
+.message {
+  margin-bottom: 5px;
 }
 
-#recruitmentList li {
-    padding: 8px;
-    background-color: #eef;
-    margin-bottom: 8px;
-    border-radius: 4px;
+#send-button {
+  background-color: #4CAF50;
+  color: white;
+  cursor: pointer;
 }
 
-#recruitmentList a {
-    text-decoration: none;
-    color: #333;
+#send-button:hover {
+  background-color: #45a049;
 }
 
-/* フレンドリスト */
-.friend-list {
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-radius: 8px;
+#recruit-button {
+  background-color: #ff9900;
+  color: white;
+  cursor: pointer;
 }
 
-.friend-list h2 {
-    margin-top: 0;
+#recruit-button:hover {
+  background-color: #e68a00;
 }
 
-#friendList {
-    list-style-type: none;
-    padding: 0;
+.icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 5px;
 }
 
-#friendList li {
-    padding: 8px;
-    background-color: #eef;
-    margin-bottom: 8px;
-    border-radius: 4px;
-}
-
-/* プロフィール設定 */
-.profile-settings {
-    margin-top: 20px;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-radius: 8px;
-}
-
-.profile-settings form {
-    display: flex;
-    flex-direction: column;
-}
-
-.profile-settings input {
-    margin-bottom: 10px;
-    padding: 8px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-}
-
-.profile-settings button {
-    padding: 10px 15px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-}
-
-/* メッセージ入力欄 */
-.chat-input {
-    display: flex;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-top: 1px solid #ddd;
-}
-
-.chat-input input {
-    flex: 1;
-    padding: 10px;
-    font-size: 16px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-}
-
-.chat-input button {
-    padding: 10px 15px;
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    margin-left: 10px;
-    cursor: pointer;
-}
-
-.chat-input button:hover {
-    background-color: #45a049;
+.chat-image {
+  max-width: 100%;
+  margin-top: 5px;
 }
