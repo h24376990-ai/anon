@@ -1,39 +1,47 @@
 body {
-  background: #f2f2f2;
+  margin: 0;
   font-family: sans-serif;
-  text-align: center;
+  background: linear-gradient(135deg, #89f7fe, #66a6ff);
+  height: 100vh;
+}
+
+.container {
+  max-width: 400px;
+  margin: 40px auto;
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
 }
 
 .title {
-  background: #4a90e2;
-  color: white;
-  padding: 15px;
-  margin-bottom: 20px;
-  font-size: 28px;
+  text-align: center;
+  font-weight: bold;
 }
 
-input {
+input, button {
+  width: 100%;
+  margin-top: 8px;
   padding: 8px;
-  margin: 5px;
-  width: 200px;
+  font-size: 14px;
 }
 
 button {
-  padding: 8px 16px;
-  background: #4a90e2;
+  background: #4CAF50;
   color: white;
   border: none;
-  cursor: pointer;
+  border-radius: 6px;
 }
 
-#messages {
-  margin-top: 20px;
-}
-
-.message {
-  background: white;
+.messages {
+  margin-top: 12px;
+  height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ccc;
   padding: 6px;
-  margin: 5px auto;
-  width: 60%;
-  border-radius: 5px;
+}
+
+/* メッセージ1件 */
+.msg {
+  margin-bottom: 6px;
+  font-size: 14px;
 }
