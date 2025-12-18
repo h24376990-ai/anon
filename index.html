@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <title>暇チャット</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
 
-  <h1 class="title">暇チャット</h1>
+  <div class="container">
+    <h1 class="title">暇チャット</h1>
 
-  <input id="name" type="text" placeholder="名前">
-  <br>
-  <input id="message" type="text" placeholder="メッセージ">
-  <br>
-  <button id="send">送信</button>
+    <input id="name" type="text" placeholder="名前">
+    <input id="message" type="text" placeholder="メッセージ">
+    <button id="send">送信</button>
 
-  <div id="messages"></div>
+    <!-- ★ メッセージ表示欄 -->
+    <div id="messages" class="messages"></div>
+  </div>
 
-  <!-- ★これが超重要 -->
   <script type="module" src="./script.js"></script>
 </body>
 </html>
