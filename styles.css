@@ -1,15 +1,16 @@
-/* ページ全体背景 */
+/* 全体背景 */
 body {
   font-family: "Hiragino Kaku Gothic Pro", sans-serif;
   display: flex;
   justify-content: center;
-  align-items: center;
-  height: 100vh;
+  align-items: flex-start;
+  min-height: 100vh;
   margin: 0;
   background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+  padding-top: 20px;
 }
 
-/* サイト名 */
+/* サイトタイトル */
 #site-title {
   color: #ff4500;
   text-align: center;
@@ -28,47 +29,18 @@ body {
   padding: 12px;
   display: flex;
   flex-direction: column;
-}
-
-/* メッセージ表示 */
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  margin-bottom: 10px;
-  max-height: 400px;
-}
-
-/* 個別メッセージ */
-.messages .message {
-  padding: 6px 10px;
-  margin-bottom: 6px;
-  border-radius: 8px;
-  word-wrap: break-word;
-}
-
-/* 奇数/偶数で色分け */
-.messages .message:nth-child(odd) {
-  background-color: #e0f7fa;
-}
-.messages .message:nth-child(even) {
-  background-color: #ffe0b2;
-}
-
-/* 募集メッセージ */
-.messages .message[data-recruit="true"] {
-  background-color: #d1c4e9;
+  gap: 8px; /* 入力欄とボタンの間隔 */
 }
 
 /* 入力欄 */
-#username-input, #icon-input, #recruit-input, #message-input, #image-input {
+input[type="text"], input[type="file"] {
   width: 100%;
   padding: 6px 8px;
-  margin-bottom: 8px;
   border: 1px solid #ccc;
   border-radius: 8px;
 }
 
-/* 送信ボタン */
+/* ボタン */
 #send-button, #recruit-button {
   padding: 8px;
   background-color: #4CAF50;
@@ -77,11 +49,29 @@ body {
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
-  margin-bottom: 6px;
 }
 
 #send-button:hover, #recruit-button:hover {
   background-color: #45a049;
+}
+
+/* メッセージ表示 */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+  margin-bottom: 10px;
+}
+
+/* メッセージ色 */
+.messages .message:nth-child(odd) {
+  background-color: #e0f7fa;
+}
+.messages .message:nth-child(even) {
+  background-color: #ffe0b2;
+}
+.messages .message[data-recruit="true"] {
+  background-color: #d1c4e9;
 }
 
 /* アイコン */
