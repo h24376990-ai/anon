@@ -1,56 +1,35 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ひまチャット</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ひまチャット</title>
+  <link rel="stylesheet" href="styles.css"> <!-- CSSファイルをリンク -->
 </head>
 <body>
-    <div class="container">
-        <!-- タイトル -->
-        <div class="header">
-            <h1>ひまチャット</h1>
-        </div>
+  <h1>ひまチャット</h1>
 
-        <!-- 募集欄 -->
-        <div class="recruitment-board">
-            <h2>募集中のユーザー</h2>
-            <ul id="recruitmentList">
-                <!-- 募集内容がここに表示される -->
-            </ul>
-        </div>
+  <!-- 名前入力 -->
+  <input type="text" id="username-input" placeholder="名前を入力" />
 
-        <!-- フレンドリスト -->
-        <div class="friend-list">
-            <h2>フレンドリスト</h2>
-            <ul id="friendList">
-                <!-- フレンドリストがここに表示される -->
-            </ul>
-        </div>
+  <!-- 募集入力 -->
+  <input type="text" id="recruit-input" placeholder="募集内容を入力" />
+  <button id="recruit-button">募集する</button>
 
-        <!-- プロフィール設定フォーム -->
-        <div class="profile-settings">
-            <h2>プロフィール設定</h2>
-            <form id="profileForm">
-                <label for="name">名前:</label>
-                <input type="text" id="name" name="name" required>
+  <!-- 個人チャット -->
+  <div class="chat-container">
+    <div class="messages" id="messages"></div> <!-- メッセージ表示エリア -->
+    <input type="text" id="message-input" placeholder="メッセージを入力..." />
+    <input type="file" id="image-input" accept="image/*" />
+    <button id="send-button">送信</button>
+  </div>
 
-                <label for="photo">写真:</label>
-                <input type="file" id="photo" name="photo" accept="image/*" required>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 
-                <button type="submit">保存</button>
-            </form>
-        </div>
-
-        <!-- メッセージ入力 -->
-        <div class="chat-input">
-            <input type="text" id="messageInput" placeholder="メッセージを入力..." />
-            <button id="sendButton">送信</button>
-        </div>
-    </div>
-
-    <script src="firebase.js"></script>
-    <script src="script.js"></script>
+  <!-- チャット処理 -->
+  <script src="script.js"></script>
 </body>
 </html>
