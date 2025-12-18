@@ -1,4 +1,4 @@
-// Firebase設定（自分のプロジェクトに置き換える）
+// Firebase設定（自分のプロジェクト用に置き換える）
 const firebaseConfig = {
   apiKey: "YOUR_API_KEY",
   authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
