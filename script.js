@@ -1,79 +1,52 @@
-// Firebase初期化
+// Firebase SDK
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+// Firebase設定（これはそのままでOK）
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
   projectId: "anon-chat-de585",
-  storageBucket: "anon-chat-de585.appspot.com",
+  storageBucket: "anon-chat-de585.firebasestorage.app",
   messagingSenderId: "1035093625910",
   appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
 };
-firebase.initializeApp(firebaseConfig);
 
-const db = firebase.firestore();
-const storage = firebase.storage();
+// 初期化
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
+// HTML要素
+const nameInput = document.getElementById("name");
+const messageInput = document.getElementById("message");
+const sendButton = document.getElementById("send");
 const messagesDiv = document.getElementById("messages");
 
-// メッセージ送信
-const sendMessage = async () => {
-  const username = document.getElementById("username-input").value || "名無し";
-  const message = document.getElementById("message-input").value;
-  const imageFile = document.getElementById("image-input").files[0];
+// 🔥 送信処理（画像処理は一切なし）
+sendButton.addEventListener("click", async () => {
+  const name = nameInput.value.trim();
+  const text = messageInput.value.trim();
 
-  if (message.trim() === "" && !imageFile) return;
+  if (!name || !text) return;
 
-  let imageURL = "";
-  if (imageFile) {
-    const storageRef = storage.ref().child(`images/${Date.now()}_${imageFile.name}`);
-    await storageRef.put(imageFile);
-    imageURL = await storageRef.getDownloadURL();
-  }
-
-  await db.collection("messages").add({
-    username,
-    message,
-    imageURL,
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    isRecruit: false
+  await addDoc(collection(db, "messages"), {
+    name: name,
+    text: text,
+    createdAt: serverTimestamp()
   });
 
-  document.getElementById("message-input").value = "";
-  document.getElementById("image-input").value = "";
-};
-
-// 募集送信
-document.getElementById("recruit-button").addEventListener("click", async () => {
-  const recruitText = document.getElementById("recruit-input").value;
-  if (recruitText.trim() === "") return;
-
-  const username = document.getElementById("username-input").value || "名無し";
-
-  await db.collection("messages").add({
-    username,
-    message: `[募集] ${recruitText}`,
-    imageURL: "",
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    isRecruit: true
-  });
-
-  document.getElementById("recruit-input").value = "";
+  messageInput.value = "";
 });
 
-document.getElementById("send-button").addEventListener("click", sendMessage);
+// 🔥 リアルタイム取得
+const q = query(
+  collection(db, "messages"),
+  orderBy("createdAt", "asc")
+);
 
-// リアルタイム取得
-db.collection("messages").orderBy("timestamp").onSnapshot(snapshot => {
+onSnapshot(q, (snapshot) => {
   messagesDiv.innerHTML = "";
-  snapshot.forEach(doc => {
+  snapshot.forEach((doc) => {
     const data = doc.data();
     const div = document.createElement("div");
-    div.classList.add("message");
-
-    let html = `<strong>${data.username}:</strong> ${data.message}`;
-    if (data.imageURL) html += `<br><img src="${data.imageURL}" class="chat-image">`;
-
-    div.innerHTML = html;
-    messagesDiv.appendChild(div);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-  });
-});
+    div.textContent = `${data.name}：${data.text}`;
