@@ -2,34 +2,26 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ひまチャット</title>
-  <link rel="stylesheet" href="styles.css"> <!-- CSSファイルをリンク -->
+  <title>暇チャット</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>ひまチャット</h1>
 
-  <!-- 名前入力 -->
-  <input type="text" id="username-input" placeholder="名前を入力" />
+  <h1 class="title">暇チャット</h1>
 
-  <!-- 募集入力 -->
-  <input type="text" id="recruit-input" placeholder="募集内容を入力" />
-  <button id="recruit-button">募集する</button>
+  <!-- 名前 -->
+  <input id="name" placeholder="名前">
 
-  <!-- 個人チャット -->
-  <div class="chat-container">
-    <div class="messages" id="messages"></div> <!-- メッセージ表示エリア -->
-    <input type="text" id="message-input" placeholder="メッセージを入力..." />
-    <input type="file" id="image-input" accept="image/*" />
-    <button id="send-button">送信</button>
-  </div>
+  <!-- メッセージ -->
+  <input id="message" placeholder="メッセージ">
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+  <!-- 送信 -->
+  <button id="send">送信</button>
 
-  <!-- チャット処理 -->
-  <script src="script.js"></script>
+  <!-- 表示欄 -->
+  <div id="messages"></div>
+
+  <!-- ★超重要：moduleで読み込む -->
+  <script type="module" src="script.js"></script>
 </body>
 </html>
