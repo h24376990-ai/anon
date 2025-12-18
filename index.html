@@ -1,32 +1,20 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ひまチャット</title>
-  <link rel="stylesheet" href="styles.css">
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
-</head>
 <body>
   <h1 id="site-title">ひまチャット</h1>
 
   <div class="chat-container">
+
+    <!-- 名前入力 -->
+    <input type="text" id="username-input" placeholder="名前を入力..." />
+
+    <!-- チャット相手募集欄 -->
     <input type="text" id="recruit-input" placeholder="チャット相手募集内容を入力..." />
     <button id="recruit-button">募集する</button>
 
-    <input type="text" id="username-input" placeholder="名前を入力..." />
+    <!-- 個人チャット欄 -->
     <input type="text" id="icon-input" placeholder="アイコンURL（任意）" />
     <input type="file" id="image-input" accept="image/*" />
 
     <div class="messages" id="messages"></div>
 
     <input type="text" id="message-input" placeholder="メッセージを入力..." />
-    <button id="send-button">送信</button>
-  </div>
-
-  <script src="script.js"></script>
-</body>
-</html>
+    <button id="send-button">送
