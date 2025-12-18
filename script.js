@@ -1,71 +1,79 @@
-// Firebaseの設定
-import { db, auth } from './firebase.js'; // firebase.jsでFirebase設定をインポート
+// Firebase初期化
+const firebaseConfig = {
+  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
+  authDomain: "anon-chat-de585.firebaseapp.com",
+  projectId: "anon-chat-de585",
+  storageBucket: "anon-chat-de585.appspot.com",
+  messagingSenderId: "1035093625910",
+  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
+};
+firebase.initializeApp(firebaseConfig);
 
-// 募集内容を追加する関数
-function addRecruitment(name, profileLink) {
-    const listItem = document.createElement('li');
-    listItem.innerHTML = `<a href="${profileLink}">${name}</a>`;  // 名前をクリックでプロフィールページに飛ぶ
-    document.getElementById('recruitmentList').appendChild(listItem);
-}
+const db = firebase.firestore();
+const storage = firebase.storage();
 
-// 募集リストにサンプルデータを追加
-addRecruitment("ユーザーA", "/profile/1");
-addRecruitment("ユーザーB", "/profile/2");
+const messagesDiv = document.getElementById("messages");
 
-// フレンドリストにサンプルデータを追加
-function addFriend(name) {
-    const listItem = document.createElement('li');
-    listItem.textContent = name;
-    document.getElementById('friendList').appendChild(listItem);
-}
+// メッセージ送信
+const sendMessage = async () => {
+  const username = document.getElementById("username-input").value || "名無し";
+  const message = document.getElementById("message-input").value;
+  const imageFile = document.getElementById("image-input").files[0];
 
-addFriend("友達A");
-addFriend("友達B");
+  if (message.trim() === "" && !imageFile) return;
 
-// メッセージ送信ボタンのクリックイベント
-document.getElementById('sendButton').addEventListener('click', function() {
-    const messageInput = document.getElementById('messageInput');
-    const message = messageInput.value;
+  let imageURL = "";
+  if (imageFile) {
+    const storageRef = storage.ref().child(`images/${Date.now()}_${imageFile.name}`);
+    await storageRef.put(imageFile);
+    imageURL = await storageRef.getDownloadURL();
+  }
 
-    if (message.trim() !== "") {
-        addMessageToChat("あなた: " + message);
-        messageInput.value = "";  // メッセージを送信後、入力フィールドをクリア
-    }
+  await db.collection("messages").add({
+    username,
+    message,
+    imageURL,
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    isRecruit: false
+  });
+
+  document.getElementById("message-input").value = "";
+  document.getElementById("image-input").value = "";
+};
+
+// 募集送信
+document.getElementById("recruit-button").addEventListener("click", async () => {
+  const recruitText = document.getElementById("recruit-input").value;
+  if (recruitText.trim() === "") return;
+
+  const username = document.getElementById("username-input").value || "名無し";
+
+  await db.collection("messages").add({
+    username,
+    message: `[募集] ${recruitText}`,
+    imageURL: "",
+    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+    isRecruit: true
+  });
+
+  document.getElementById("recruit-input").value = "";
 });
 
-// メッセージをチャットボックスに追加する関数
-function addMessageToChat(message) {
-    const chatBox = document.getElementById('chatBox');
-    const messageElement = document.createElement('div');
-    messageElement.textContent = message;
-    chatBox.appendChild(messageElement);
-    chatBox.scrollTop = chatBox.scrollHeight; // 新しいメッセージが下に来るようにスクロール
-}
+document.getElementById("send-button").addEventListener("click", sendMessage);
 
-// プロフィール設定を保存する
-document.getElementById('profileForm').addEventListener('submit', function(event) {
-    event.preventDefault();
-    const name = document.getElementById('name').value;
-    const photo = document.getElementById('photo').files[0];
+// リアルタイム取得
+db.collection("messages").orderBy("timestamp").onSnapshot(snapshot => {
+  messagesDiv.innerHTML = "";
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const div = document.createElement("div");
+    div.classList.add("message");
 
-    // Firestoreにプロフィール情報を保存
-    const userId = auth.currentUser.uid;
-    saveUserProfile(userId, name, photo);
+    let html = `<strong>${data.username}:</strong> ${data.message}`;
+    if (data.imageURL) html += `<br><img src="${data.imageURL}" class="chat-image">`;
 
-    alert("プロフィールが保存されました!");
+    div.innerHTML = html;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
 });
-
-// プロフィール情報をFirestoreに保存する関数
-function saveUserProfile(userId, name, photo) {
-    db.collection('users').doc(userId).set({
-        name: name,
-        photoURL: photo ? URL.createObjectURL(photo) : null,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-    })
-    .then(() => {
-        console.log("プロフィールが保存されました!");
-    })
-    .catch((error) => {
-        console.error("エラーが発生しました: ", error);
-    });
-}
