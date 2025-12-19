@@ -1,24 +1,75 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase設定（indexと同じ）
+// Firebase 設定は同じ
 const firebaseConfig = {
-  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
-  authDomain: "anon-chat-de585.firebaseapp.com",
-  projectId: "anon-chat-de585",
-  storageBucket: "anon-chat-de585.firebasestorage.app",
-  messagingSenderId: "1035093625910",
-  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
+  apiKey: "xxxxxx",
+  authDomain: "xxxxxx.firebaseapp.com",
+  projectId: "xxxxxx",
+  storageBucket: "xxxxxx.appspot.com",
+  messagingSenderId: "xxxxxx",
+  appId: "xxxxxx"
 };
 
-// 初期化
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// HTML要素取得
+// URL から uid 取得
+const urlParams = new URLSearchParams(window.location.search);
+const uid = urlParams.get("uid");
+
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 
-// messagesコレクション参照
-const messagesRef = collection(db, "messages");
+const roomList = document.getElementById("roomList");
+const newRoom = document.getElementById("newRoom");
+const createRoomBtn = document.getElementById("createRoomBtn");
+
+// チャット送信
+sendBtn.addEventListener("click", async () => {
+  const msg = messageInput.value.trim();
+  if (!msg) return;
+
+  await addDoc(collection(db, "messages"), {
+    uid,
+    message: msg,
+    timestamp: Date.now()
+  });
+  messageInput.value = "";
+});
+
+// リアルタイム表示
+const q = query(collection(db, "messages"), orderBy("timestamp"));
+onSnapshot(q, (snapshot) => {
+  chatArea.innerHTML = "";
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const div = document.createElement("div");
+    div.textContent = `${data.uid}: ${data.message}`;
+    chatArea.appendChild(div);
+  });
+});
+
+// ルーム作成
+createRoomBtn.addEventListener("click", async () => {
+  const roomName = newRoom.value.trim();
+  if (!roomName) return;
+  await addDoc(collection(db, "rooms"), {
+    name: roomName,
+    createdBy: uid,
+    timestamp: Date.now()
+  });
+  newRoom.value = "";
+});
+
+// ルーム一覧表示
+onSnapshot(collection(db, "rooms"), (snapshot) => {
+  roomList.innerHTML = "";
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    const div = document.createElement("div");
+    div.textContent = `${data.name} （作成者: ${data.createdBy}）`;
+    roomList.appendChild(div);
+  });
+});
