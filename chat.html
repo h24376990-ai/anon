@@ -10,21 +10,17 @@
   <div class="container">
     <h1>暇チャット</h1>
 
-    <!-- メッセージ表示エリア -->
-    <div id="chatArea" class="chat-area" style="border:1px solid #ccc; height:300px; overflow-y:auto; padding:5px;"></div>
-
-    <!-- メッセージ入力 -->
+    <!-- 全体チャット表示 -->
+    <h2>全体チャット</h2>
+    <div id="chatArea" class="chat-area"></div>
     <input type="text" id="messageInput" placeholder="メッセージを入力">
     <button id="sendBtn">送信</button>
 
     <!-- 募集欄 -->
     <h2>募集</h2>
-    <div id="roomList" style="border:1px solid #ccc; padding:5px; max-height:150px; overflow-y:auto;"></div>
+    <div id="roomList" class="room-list"></div>
     <input type="text" id="newRoom" placeholder="新しいルーム名">
     <button id="createRoomBtn">ルーム作成</button>
-
-    <!-- デバッグ表示 -->
-    <p id="debugLog" style="color:red;"></p>
   </div>
 
   <script type="module" src="chat.js"></script>
