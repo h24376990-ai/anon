@@ -3,14 +3,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase 設定（自分の FirebaseConfig に置き換える）
+// Firebase 設定
 const firebaseConfig = {
-  apiKey: "xxxxxx",
-  authDomain: "xxxxxx.firebaseapp.com",
-  projectId: "xxxxxx",
-  storageBucket: "xxxxxx.appspot.com",
-  messagingSenderId: "xxxxxx",
-  appId: "xxxxxx"
+  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
+  authDomain: "anon-chat-de585.firebaseapp.com",
+  projectId: "anon-chat-de585",
+  storageBucket: "anon-chat-de585.firebasestorage.app",
+  messagingSenderId: "1035093625910",
+  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97",
+  measurementId: "G-0KWK7SRJHZ"
 };
 
 // 初期化
@@ -19,7 +20,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 console.log("Firebase 初期化完了");
 
-// HTML要素
+// HTML要素取得
 const regName = document.getElementById("regName");
 const regPassword = document.getElementById("regPassword");
 const ageInput = document.getElementById("age");
@@ -48,11 +49,9 @@ registerBtn.addEventListener("click", async () => {
       bio: bioInput.value
     });
 
-    registerMessage.style.color = "green";
-    registerMessage.textContent = "登録完了！ログインしてください";
+    alert("登録完了！ログインしてください"); // iPadでも確認可能
   } catch (error) {
-    registerMessage.style.color = "red";
-    registerMessage.textContent = "登録に失敗しました";
+    alert("登録に失敗しました: " + error.message);
     console.error(error);
   }
 });
@@ -62,21 +61,16 @@ loginBtn.addEventListener("click", async () => {
   const email = `${loginName.value}@himachat.com`;
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, loginPassword.value);
-    loginMessage.style.color = "green";
-    loginMessage.textContent = "ログイン成功！";
-
-    // ログイン後、chat.html に遷移
-    setTimeout(() => {
-      window.location.href = "chat.html?uid=" + userCredential.user.uid;
-    }, 500);
+    alert("ログイン成功！");
+    // chat.html に遷移
+    window.location.href = "chat.html?uid=" + userCredential.user.uid;
   } catch (error) {
-    loginMessage.style.color = "red";
     if (error.code === "auth/user-not-found") {
-      loginMessage.textContent = "その名前は登録されていません";
+      alert("その名前は登録されていません");
     } else if (error.code === "auth/wrong-password") {
-      loginMessage.textContent = "合言葉が間違っています";
+      alert("合言葉が間違っています");
     } else {
-      loginMessage.textContent = "ログインに失敗しました";
+      alert("ログインに失敗しました: " + error.message);
     }
     console.error(error);
   }
