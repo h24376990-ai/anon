@@ -85,3 +85,31 @@ onSnapshot(collection(db, "rooms"), (snapshot) => {
     roomList.appendChild(div);
   });
 });
+import { query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const privateChatList = document.getElementById("privateChatList");
+
+// 自分が入っている個人チャット一覧を取得
+const q = query(
+  collection(db, "privateRooms"),
+  where("members", "array-contains", uid)
+);
+
+onSnapshot(q, (snapshot) => {
+  privateChatList.innerHTML = "";
+
+  snapshot.forEach((docSnap) => {
+    const room = docSnap.data();
+    const roomId = docSnap.id;
+
+    const div = document.createElement("div");
+    div.textContent = `個人チャット：${roomId}`;
+    div.style.cursor = "pointer";
+
+    div.onclick = () => {
+      window.location.href = `privateChat.html?roomId=${roomId}`;
+    };
+
+    privateChatList.appendChild(div);
+  });
+});
