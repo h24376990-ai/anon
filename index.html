@@ -2,21 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>暇チャット</title>
-  <link rel="stylesheet" href="./style.css">
+  <title>暇チャット｜新規登録</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div class="container">
-    <h1 class="title">暇チャット</h1>
+  <div class="register-container">
+    <h1>暇チャット</h1>
+    <p class="subtitle">名前と合言葉を決めて参加</p>
 
-    <input id="name" placeholder="名前">
-    <input id="message" placeholder="メッセージ">
-    <button id="send">送信</button>
+    <input id="name" type="text" placeholder="名前（必須）">
+    <input id="password" type="password" placeholder="合言葉（必須）">
 
-    <div id="messages"></div>
+    <input id="age" type="number" placeholder="年齢（任意）">
+    <input id="location" type="text" placeholder="出身（任意）">
+    <input id="bio" type="text" placeholder="一言（任意）">
+
+    <button id="registerBtn">登録する</button>
+
+    <p id="message"></p>
   </div>
 
-  <script type="module" src="./script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
