@@ -10,12 +10,18 @@
   <div class="container">
     <h1>暇チャット</h1>
 
-    <!-- メッセージ表示エリア -->
+    <!-- メッセージ表示 -->
     <div id="chatArea" class="chat-area"></div>
 
     <!-- メッセージ入力 -->
     <input type="text" id="messageInput" placeholder="メッセージを入力">
     <button id="sendBtn">送信</button>
+
+    <!-- 募集欄 -->
+    <h2>募集</h2>
+    <div id="roomList"></div>
+    <input type="text" id="newRoom" placeholder="新しいルーム名">
+    <button id="createRoomBtn">ルーム作成</button>
   </div>
 
   <script type="module" src="chat.js"></script>
