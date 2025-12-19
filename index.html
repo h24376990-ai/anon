@@ -2,27 +2,35 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>暇チャット｜新規登録</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>暇チャット</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-  <div class="register-container">
+  <div class="container">
     <h1>暇チャット</h1>
-    <p class="subtitle">名前と合言葉を決めて参加</p>
 
-    <input id="name" type="text" placeholder="名前（必須）">
-    <input id="password" type="password" placeholder="合言葉（必須）">
-
-    <input id="age" type="number" placeholder="年齢（任意）">
-    <input id="location" type="text" placeholder="出身（任意）">
-    <input id="bio" type="text" placeholder="一言（任意）">
-
+    <!-- ===== 新規登録フォーム ===== -->
+    <h2>新規登録</h2>
+    <input type="text" id="name" placeholder="名前（必須）">
+    <input type="password" id="password" placeholder="合言葉（必須）">
+    <input type="text" id="age" placeholder="年齢（任意）">
+    <input type="text" id="location" placeholder="出身（任意）">
+    <input type="text" id="bio" placeholder="一言（任意）">
     <button id="registerBtn">登録する</button>
-
     <p id="message"></p>
+
+    <hr>
+
+    <!-- ===== ログインフォーム ===== -->
+    <h2>既存ユーザーのログイン</h2>
+    <input type="text" id="loginName" placeholder="名前">
+    <input type="password" id="loginPassword" placeholder="合言葉">
+    <button id="loginBtn">ログインする</button>
+    <p id="loginMessage"></p>
   </div>
 
+  <!-- script.js を読み込む -->
   <script type="module" src="script.js"></script>
 </body>
 </html>
