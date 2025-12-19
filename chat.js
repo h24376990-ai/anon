@@ -1,9 +1,10 @@
-// Firebase SDK imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, addDoc, serverTimestamp, onSnapshot, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore, collection, addDoc, serverTimestamp,
+  onSnapshot, doc, getDoc, query, where
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase 設定（既存のものをそのまま）
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
@@ -17,99 +18,60 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// HTML要素
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
+const privateChatList = document.getElementById("privateChatList");
 
-const roomList = document.getElementById("roomList");
-const newRoomInput = document.getElementById("newRoom");
-const createRoomBtn = document.getElementById("createRoomBtn");
-
-// URLからログインユーザーUID取得
-const params = new URLSearchParams(window.location.search);
+const params = new URLSearchParams(location.search);
 const uid = params.get("uid");
 
 // ユーザー名取得
 async function getUserName(uid) {
-  const userDoc = await getDoc(doc(db, "users", uid));
-  return userDoc.exists() ? userDoc.data().name : "名無し";
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? snap.data().name : "名無し";
 }
 
 // 全体チャット送信
-sendBtn.addEventListener("click", async () => {
-  const text = messageInput.value.trim();
-  if (!text) return;
+sendBtn.onclick = async () => {
+  if (!messageInput.value) return;
+  const name = await getUserName(uid);
 
-  const userName = await getUserName(uid);
   await addDoc(collection(db, "messages"), {
-    author: userName,
-    text: text,
+    author: name,
+    text: messageInput.value,
     timestamp: serverTimestamp()
   });
 
   messageInput.value = "";
-});
+};
 
-// 全体チャット表示（リアルタイム）
-onSnapshot(collection(db, "messages"), (snapshot) => {
+// 全体チャット表示
+onSnapshot(collection(db, "messages"), (snap) => {
   chatArea.innerHTML = "";
-  snapshot.docs.forEach(doc => {
-    const msg = doc.data();
+  snap.forEach(d => {
+    const m = d.data();
     const div = document.createElement("div");
-    div.textContent = `${msg.author}: ${msg.text}`;
+    div.textContent = `${m.author}: ${m.text}`;
     chatArea.appendChild(div);
   });
 });
 
-// 募集ルーム作成
-createRoomBtn.addEventListener("click", async () => {
-  const roomName = newRoomInput.value.trim();
-  if (!roomName) return;
-
-  await addDoc(collection(db, "rooms"), {
-    name: roomName,
-    timestamp: serverTimestamp()
-  });
-
-  newRoomInput.value = "";
-});
-
-// 募集ルーム表示（リアルタイム）
-onSnapshot(collection(db, "rooms"), (snapshot) => {
-  roomList.innerHTML = "";
-  snapshot.docs.forEach(doc => {
-    const room = doc.data();
-    const div = document.createElement("div");
-    div.textContent = room.name;
-    roomList.appendChild(div);
-  });
-});
-import { query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-const privateChatList = document.getElementById("privateChatList");
-
-// 自分が入っている個人チャット一覧を取得
+// 個人チャット一覧
 const q = query(
   collection(db, "privateRooms"),
   where("members", "array-contains", uid)
 );
 
-onSnapshot(q, (snapshot) => {
+onSnapshot(q, (snap) => {
   privateChatList.innerHTML = "";
-
-  snapshot.forEach((docSnap) => {
-    const room = docSnap.data();
-    const roomId = docSnap.id;
-
+  snap.forEach(d => {
     const div = document.createElement("div");
-    div.textContent = `個人チャット：${roomId}`;
-    div.style.cursor = "pointer";
-
+    div.textContent = "個人チャット";
     div.onclick = () => {
-      window.location.href = `privateChat.html?roomId=${roomId}`;
+      location.href = `privateChat.html?roomId=${d.id}&uid=${uid}`;
     };
-
     privateChatList.appendChild(div);
   });
 });
+
