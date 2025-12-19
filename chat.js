@@ -22,22 +22,26 @@ const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 
-// ログインユーザーのUIDを取得
+const roomList = document.getElementById("roomList");
+const newRoomInput = document.getElementById("newRoom");
+const createRoomBtn = document.getElementById("createRoomBtn");
+
+// URLからログインユーザーUID取得
 const params = new URLSearchParams(window.location.search);
 const uid = params.get("uid");
 
-// ユーザー名を取得する関数
+// ユーザー名取得
 async function getUserName(uid) {
   const userDoc = await getDoc(doc(db, "users", uid));
   return userDoc.exists() ? userDoc.data().name : "名無し";
 }
 
-// メッセージ送信
+// 全体チャット送信
 sendBtn.addEventListener("click", async () => {
   const text = messageInput.value.trim();
   if (!text) return;
 
-  const userName = await getUserName(uid); // 名前取得
+  const userName = await getUserName(uid);
   await addDoc(collection(db, "messages"), {
     author: userName,
     text: text,
@@ -47,7 +51,7 @@ sendBtn.addEventListener("click", async () => {
   messageInput.value = "";
 });
 
-// メッセージ表示（リアルタイム）
+// 全体チャット表示（リアルタイム）
 onSnapshot(collection(db, "messages"), (snapshot) => {
   chatArea.innerHTML = "";
   snapshot.docs.forEach(doc => {
@@ -55,5 +59,29 @@ onSnapshot(collection(db, "messages"), (snapshot) => {
     const div = document.createElement("div");
     div.textContent = `${msg.author}: ${msg.text}`;
     chatArea.appendChild(div);
+  });
+});
+
+// 募集ルーム作成
+createRoomBtn.addEventListener("click", async () => {
+  const roomName = newRoomInput.value.trim();
+  if (!roomName) return;
+
+  await addDoc(collection(db, "rooms"), {
+    name: roomName,
+    timestamp: serverTimestamp()
+  });
+
+  newRoomInput.value = "";
+});
+
+// 募集ルーム表示（リアルタイム）
+onSnapshot(collection(db, "rooms"), (snapshot) => {
+  roomList.innerHTML = "";
+  snapshot.docs.forEach(doc => {
+    const room = doc.data();
+    const div = document.createElement("div");
+    div.textContent = room.name;
+    roomList.appendChild(div);
   });
 });
