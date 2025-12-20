@@ -10,7 +10,6 @@ import {
   query,
   orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
 import {
   getAuth,
   signInAnonymously,
@@ -22,9 +21,6 @@ const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
   projectId: "anon-chat-de585",
-  storageBucket: "anon-chat-de585.firebasestorage.app",
-  messagingSenderId: "1035093625910",
-  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -53,19 +49,17 @@ const privateList = document.getElementById("privateList");
 
 // -------------------- 状態 --------------------
 
-let myUid = null;
+let myUid = "";
 let targetUid = "";
 
-// -------------------- Auth（匿名ログイン） --------------------
+// -------------------- 認証 --------------------
 
 signInAnonymously(auth);
 
 onAuthStateChanged(auth, user => {
   if (!user) return;
   myUid = user.uid;
-  console.log("ログインUID:", myUid);
-
-  startAllListeners(); // ← uid確定後に処理開始
+  startApp();
 });
 
 // -------------------- 共通 --------------------
@@ -75,17 +69,12 @@ async function getUserName(uid) {
   return snap.exists() ? snap.data().name : "名無し";
 }
 
-// -------------------- 全体処理開始 --------------------
+// -------------------- メイン処理 --------------------
 
-function startAllListeners() {
-  setupGlobalChat();
-  setupRecruit();
-  setupPrivateList();
-}
+function startApp() {
 
-// -------------------- 全体チャット --------------------
+  // ---- 全体チャット ----
 
-function setupGlobalChat() {
   sendBtn.onclick = async () => {
     const text = messageInput.value.trim();
     if (!text) return;
@@ -102,7 +91,11 @@ function setupGlobalChat() {
     messageInput.value = "";
   };
 
-  const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
+  const msgQuery = query(
+    collection(db, "messages"),
+    orderBy("timestamp"),
+  );
+
   onSnapshot(msgQuery, snap => {
     chatArea.innerHTML = "";
 
@@ -123,11 +116,9 @@ function setupGlobalChat() {
 
     chatArea.scrollTop = chatArea.scrollHeight;
   });
-}
 
-// -------------------- 募集欄 --------------------
+  // ---- 募集欄 ----
 
-function setupRecruit() {
   recruitBtn.onclick = async () => {
     const text = recruitInput.value.trim();
     if (!text) return;
@@ -144,7 +135,11 @@ function setupRecruit() {
     recruitInput.value = "";
   };
 
-  const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
+  const recruitQuery = query(
+    collection(db, "recruits"),
+    orderBy("timestamp"),
+  );
+
   onSnapshot(recruitQuery, snap => {
     recruitArea.innerHTML = "";
 
@@ -160,9 +155,37 @@ function setupRecruit() {
 
       div.appendChild(nameSpan);
       div.append(`：${r.text}`);
-
       recruitArea.appendChild(div);
     });
+  });
+
+  // ---- 個人チャット一覧 ----
+
+  const roomQuery = query(
+    collection(db, "private_rooms"),
+    orderBy("createdAt"),
+  );
+
+  onSnapshot(roomQuery, async snap => {
+    privateList.innerHTML = "";
+
+    for (const docSnap of snap.docs) {
+      const room = docSnap.data();
+      if (!room.members.includes(myUid)) continue;
+
+      const otherUid = room.members.find(uid => uid !== myUid);
+      const otherName = await getUserName(otherUid);
+
+      const div = document.createElement("div");
+      div.textContent = otherName;
+      div.style.color = "blue";
+      div.style.cursor = "pointer";
+      div.onclick = () => {
+        location.href = `private.html?roomId=${docSnap.id}`;
+      };
+
+      privateList.appendChild(div);
+    }
   });
 }
 
@@ -184,34 +207,15 @@ async function openProfile(uid) {
   profileBox.style.display = "block";
 }
 
-// -------------------- 個人チャット一覧 --------------------
+// -------------------- 個人チャット作成 --------------------
 
-function setupPrivateList() {
-  const roomQuery = query(
-    collection(db, "private_rooms"),
-    orderBy("createdAt")
-  );
+startPrivateBtn.onclick = async () => {
+  if (!targetUid || targetUid === myUid) return;
 
-  onSnapshot(roomQuery, async snap => {
-    privateList.innerHTML = "";
-
-    for (const docSnap of snap.docs) {
-      const room = docSnap.data();
-      if (!room.members.includes(myUid)) continue;
-
-      const otherUid = room.members.find(uid => uid !== myUid);
-      const otherName = await getUserName(otherUid);
-
-      const div = document.createElement("div");
-      div.textContent = otherName;
-      div.style.color = "blue";
-      div.style.cursor = "pointer";
-
-      div.onclick = () => {
-        location.href = `private.html?roomId=${docSnap.id}`;
-      };
-
-      privateList.appendChild(div);
-    }
+  await addDoc(collection(db, "private_rooms"), {
+    members: [myUid, targetUid],
+    createdAt: serverTimestamp()
   });
-}
+
+  alert("個人チャット作成");
+};
