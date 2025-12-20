@@ -2,16 +2,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, serverTimestamp,
-  doc, getDoc, query, orderBy
+  doc, getDoc, query, orderBy, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/* Firebase 初期化 */
-const firebaseConfig = { /* 省略 */ };
+/* ================= Firebase 初期化 ================= */
+const firebaseConfig = { /* ここにFirebase設定 */ };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* HTML 要素 */
+/* ================= HTML ================= */
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
@@ -24,12 +24,12 @@ const pLocation = document.getElementById("pLocation");
 const pBio = document.getElementById("pBio");
 const startPrivateBtn = document.getElementById("startPrivateBtn");
 
-/* 状態 */
+/* ================= 状態 ================= */
 let myUid = "";
 let myName = "";
 let targetUid = "";
 
-/* ログイン監視 */
+/* ================= ログイン監視 ================= */
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
   myUid = user.uid;
@@ -83,36 +83,34 @@ function subscribeMessages() {
 }
 
 /* ================= 個人チャット一覧 ================= */
-function subscribeDMList() {
-  const roomsQuery = query(collection(db, "private_rooms"));
-  onSnapshot(roomsQuery, async (snap) => {
-    dmList.innerHTML = "";
+async function subscribeDMList() {
+  const snap = await getDocs(collection(db, "private_rooms"));
+  dmList.innerHTML = "";
 
-    snap.forEach(async (roomDoc) => {
-      const room = roomDoc.data();
-      if (!room.members.includes(myUid)) return;
+  for (let roomDoc of snap.docs) {
+    const room = roomDoc.data();
+    if (!room.members.includes(myUid)) continue;
 
-      const otherUid = room.members.find(uid => uid !== myUid);
-      if (!otherUid) return; // 自分しかいない部屋は無視
+    const otherUid = room.members.find(uid => uid !== myUid);
+    if (!otherUid) continue;
 
-      const userSnap = await getDoc(doc(db, "users", otherUid));
-      if (!userSnap.exists()) return;
-      const user = userSnap.data();
+    const userSnap = await getDoc(doc(db, "users", otherUid));
+    if (!userSnap.exists()) continue;
+    const user = userSnap.data();
 
-      const div = document.createElement("div");
-      div.className = "dm-item";
-      div.innerHTML = `<strong>${user.name}</strong>`;
+    const div = document.createElement("div");
+    div.className = "dm-item";
+    div.innerHTML = `<strong>${user.name}</strong>`;
 
-      const btn = document.createElement("button");
-      btn.textContent = "チャット";
-      btn.onclick = () => {
-        location.href = `private_chat.html?uid=${otherUid}`;
-      };
+    const btn = document.createElement("button");
+    btn.textContent = "チャット";
+    btn.onclick = () => {
+      location.href = `private_chat.html?uid=${otherUid}`;
+    };
 
-      div.appendChild(btn);
-      dmList.appendChild(div);
-    });
-  });
+    div.appendChild(btn);
+    dmList.appendChild(div);
+  }
 }
 
 /* ================= プロフィール表示 ================= */
@@ -134,11 +132,11 @@ async function openProfile(uid) {
 startPrivateBtn.onclick = async () => {
   if (!targetUid || targetUid === myUid) return;
 
-  // すでに同じ部屋があるかチェック
-  const roomsQuery = query(collection(db, "private_rooms"));
+  // 既存の部屋があるか確認
+  const snap = await getDocs(collection(db, "private_rooms"));
   let exists = false;
-  const snap = await (await roomsQuery.get()).docs;
-  for (let docSnap of snap) {
+
+  for (let docSnap of snap.docs) {
     const room = docSnap.data();
     if ([myUid, targetUid].sort().join() === room.members.sort().join()) {
       exists = true;
