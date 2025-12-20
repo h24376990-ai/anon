@@ -1,5 +1,15 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, doc, getDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+  doc,
+  getDoc,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Firebase 初期化
 const firebaseConfig = {
@@ -14,7 +24,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// HTML要素
+// -------------------- HTML要素 --------------------
+
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
@@ -31,11 +42,15 @@ const pLocation = document.getElementById("pLocation");
 const pBio = document.getElementById("pBio");
 const startPrivateBtn = document.getElementById("startPrivateBtn");
 
-// URLから自分のuidを取得
+const privateList = document.getElementById("privateList");
+
+// -------------------- 状態 --------------------
+
 const myUid = new URLSearchParams(location.search).get("uid");
 let targetUid = "";
 
-// 名前取得
+// -------------------- 共通 --------------------
+
 async function getUserName(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? snap.data().name : "名無し";
@@ -43,7 +58,6 @@ async function getUserName(uid) {
 
 // -------------------- 全体チャット --------------------
 
-// メッセージ送信
 sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -60,11 +74,10 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-// 最新50件だけ取得＋スクロール固定
-const msgQuery = query(collection(db, "messages"), orderBy("timestamp"), limit(50));
-
+const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
 onSnapshot(msgQuery, snap => {
   chatArea.innerHTML = "";
+
   snap.forEach(docSnap => {
     const m = docSnap.data();
     const div = document.createElement("div");
@@ -80,12 +93,12 @@ onSnapshot(msgQuery, snap => {
 
     chatArea.appendChild(div);
   });
-  chatArea.scrollTop = chatArea.scrollHeight; // 最新メッセージ下に固定
+
+  chatArea.scrollTop = chatArea.scrollHeight;
 });
 
 // -------------------- 募集欄 --------------------
 
-// 投稿
 recruitBtn.onclick = async () => {
   const text = recruitInput.value.trim();
   if (!text) return;
@@ -102,20 +115,28 @@ recruitBtn.onclick = async () => {
   recruitInput.value = "";
 };
 
-// 表示（最新10件）
-const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp", "desc"), limit(10));
-
+const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
 onSnapshot(recruitQuery, snap => {
   recruitArea.innerHTML = "";
-  snap.docs.reverse().forEach(docSnap => {  // 古い順に表示
+
+  snap.forEach(docSnap => {
     const r = docSnap.data();
     const div = document.createElement("div");
-    div.textContent = `${r.author}：${r.text}`;
+
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = r.author;
+    nameSpan.style.color = "blue";
+    nameSpan.style.cursor = "pointer";
+    nameSpan.onclick = () => openProfile(r.uid);
+
+    div.appendChild(nameSpan);
+    div.append(`：${r.text}`);
+
     recruitArea.appendChild(div);
   });
 });
 
-// -------------------- プロフィール表示 --------------------
+// -------------------- プロフィール --------------------
 
 async function openProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
@@ -124,18 +145,4 @@ async function openProfile(uid) {
   const u = snap.data();
   targetUid = uid;
 
-  pName.textContent = `名前：${u.name}`;
-  pSex.textContent = `性別：${u.sex || ""}`;
-  pAge.textContent = `年齢：${u.age || ""}`;
-  pLocation.textContent = `出身：${u.location || ""}`;
-  pBio.textContent = `ひとこと：${u.bio || ""}`;
-
-  profileBox.style.display = "block";
-}
-
-// -------------------- 個人チャット作成 --------------------
-
-startPrivateBtn.onclick = async () => {
-  if (!targetUid || targetUid === myUid) return;
-
-  await addDoc(colle
+  pName.textContent = `名前：${
