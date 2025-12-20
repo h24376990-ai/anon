@@ -41,7 +41,9 @@ const pLocation = document.getElementById("pLocation");
 const pBio = document.getElementById("pBio");
 const startPrivateBtn = document.getElementById("startPrivateBtn");
 
-// URLから自分のuidを取得
+const privateList = document.getElementById("privateList");
+
+// URLから自分のuid取得
 const myUid = new URLSearchParams(location.search).get("uid");
 let targetUid = "";
 
@@ -84,7 +86,6 @@ onSnapshot(msgQuery, snap => {
 
     div.appendChild(nameSpan);
     div.append(`：${m.text}`);
-
     chatArea.appendChild(div);
   });
   chatArea.scrollTop = chatArea.scrollHeight;
@@ -123,7 +124,6 @@ onSnapshot(recruitQuery, snap => {
 
     div.appendChild(nameSpan);
     div.append(`：${r.text}`);
-
     recruitArea.appendChild(div);
   });
 });
@@ -146,7 +146,7 @@ async function openProfile(uid) {
   profileBox.style.display = "block";
 }
 
-// -------------------- 個人チャット（未完成） --------------------
+// -------------------- 個人チャット作成 --------------------
 
 startPrivateBtn.onclick = async () => {
   if (!targetUid || targetUid === myUid) return;
@@ -156,5 +156,35 @@ startPrivateBtn.onclick = async () => {
     createdAt: serverTimestamp()
   });
 
-  alert("個人チャット作成（未実装）");
+  alert("個人チャットを作成した");
 };
+
+// -------------------- 個人チャット一覧 --------------------
+
+const roomQuery = query(
+  collection(db, "private_rooms"),
+  orderBy("createdAt")
+);
+
+onSnapshot(roomQuery, async snap => {
+  privateList.innerHTML = "";
+
+  for (const docSnap of snap.docs) {
+    const room = docSnap.data();
+    if (!room.members.includes(myUid)) continue;
+
+    const otherUid = room.members.find(uid => uid !== myUid);
+    const otherName = await getUserName(otherUid);
+
+    const div = document.createElement("div");
+    div.textContent = otherName;
+    div.style.cursor = "pointer";
+    div.style.color = "blue";
+
+    div.onclick = () => {
+      alert(`次はこのroomIdでチャット画面に行く\nroomId: ${docSnap.id}`);
+    };
+
+    privateList.appendChild(div);
+  }
+});
