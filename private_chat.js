@@ -77,3 +77,5 @@ onSnapshot(q, (snapshot) => {
     chatArea.appendChild(div);
   });
 });
+const params = new URLSearchParams(location.search);
+const partnerUid = params.get("uid");
