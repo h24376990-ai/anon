@@ -1,81 +1,113 @@
-// Firebase SDK
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore,
   collection,
   addDoc,
-  serverTimestamp,
-  onSnapshot,
   query,
-  orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  orderBy,
+  onSnapshot,
+  serverTimestamp,
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Firebase設定（いつもの）
+/* ===== Firebase 設定（既存と同じ） ===== */
 const firebaseConfig = {
-  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
-  authDomain: "anon-chat-de585.firebaseapp.com",
-  projectId: "anon-chat-de585",
-  storageBucket: "anon-chat-de585.firebasestorage.app",
-  messagingSenderId: "1035093625910",
-  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// HTML要素
-const chatArea = document.getElementById("chatArea");
-const messageInput = document.getElementById("messageInput");
-const sendBtn = document.getElementById("sendBtn");
+/* ===== DOM ===== */
+const messagesDiv = document.getElementById("messages");
+const form = document.getElementById("messageForm");
+const input = document.getElementById("messageInput");
+const chatTitle = document.getElementById("chatTitle");
 
-// URLから roomId を取得
-const params = new URLSearchParams(window.location.search);
-const roomId = params.get("roomId");
+/* ===== URL から相手UID取得 ===== */
+const params = new URLSearchParams(location.search);
+const partnerUid = params.get("uid");
 
-// 安全チェック
-if (!roomId) {
-  alert("ルームIDがありません");
-}
-
-// メッセージ送信
-sendBtn.addEventListener("click", async () => {
-  const text = messageInput.value.trim();
-  if (!text) return;
-
-  const user = auth.currentUser;
-  if (!user) {
-    alert("ログインしてください");
+/* ===== ログイン確認 ===== */
+onAuthStateChanged(auth, async (user) => {
+  if (!user || !partnerUid) {
+    location.href = "index.html";
     return;
   }
 
-  await addDoc(
-    collection(db, "private_rooms", roomId, "messages"),
-    {
-      uid: user.uid,
-      text: text,
-      timestamp: serverTimestamp()
-    }
-  );
+  const myUid = user.uid;
 
-  messageInput.value = "";
-});
+  // roomId 作成
+  const roomId = [myUid, partnerUid].sort().join("_");
 
-// メッセージ受信（リアルタイム）
-const q = query(
-  collection(db, "private_rooms", roomId, "messages"),
-  orderBy("timestamp")
-);
+  // 相手の名前表示
+  loadPartnerName(partnerUid);
 
-onSnapshot(q, (snapshot) => {
-  chatArea.innerHTML = "";
-  snapshot.forEach(doc => {
-    const msg = doc.data();
-    const div = document.createElement("div");
-    div.textContent = msg.text;
-    chatArea.appendChild(div);
+  // メッセージ監視
+  listenMessages(roomId, myUid);
+
+  // 送信処理
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    if (!input.value.trim()) return;
+
+    await addDoc(
+      collection(db, "private_rooms", roomId, "messages"),
+      {
+        uid: myUid,
+        text: input.value,
+        timestamp: serverTimestamp()
+      }
+    );
+
+    input.value = "";
   });
 });
-const params = new URLSearchParams(location.search);
-const partnerUid = params.get("uid");
+
+/* ===== 相手の名前取得 ===== */
+async function loadPartnerName(uid) {
+  const userSnap = await getDoc(doc(db, "users", uid));
+  if (userSnap.exists()) {
+    chatTitle.textContent = `${userSnap.data().name} さんとのチャット`;
+  } else {
+    chatTitle.textContent = "チャット";
+  }
+}
+
+/* ===== メッセージ表示 ===== */
+function listenMessages(roomId, myUid) {
+  const q = query(
+    collection(db, "private_rooms", roomId, "messages"),
+    orderBy("timestamp")
+  );
+
+  onSnapshot(q, (snapshot) => {
+    messagesDiv.innerHTML = "";
+
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+
+      const div = document.createElement("div");
+      div.textContent = data.text;
+
+      // 自分の発言かどうか
+      if (data.uid === myUid) {
+        div.style.textAlign = "right";
+        div.style.color = "blue";
+      } else {
+        div.style.textAlign = "left";
+      }
+
+      messagesDiv.appendChild(div);
+    });
+
+    // 最新メッセージへスクロール
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  });
+}
