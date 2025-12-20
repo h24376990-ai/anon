@@ -2,34 +2,43 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>暇チャット - 登録/ログイン</title>
-  <link rel="stylesheet" href="style.css">
+  <title>チャット</title>
+  <style>
+    .dm-item {
+      margin-bottom: 10px;
+    }
+    .dm-name {
+      color: blue;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+    .start-chat-btn {
+      padding: 2px 6px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <h1>暇チャット</h1>
 
-    <div id="registerSection">
-      <h2>新規登録</h2>
-      <input type="text" id="regName" placeholder="名前">
-      <input type="password" id="regPassword" placeholder="合言葉">
-      <input type="text" id="age" placeholder="年齢（任意）">
-      <input type="text" id="location" placeholder="出身地（任意）">
-      <input type="text" id="bio" placeholder="一言（任意）">
-      <button id="registerBtn">登録する</button>
-      <p id="registerMessage"></p>
-    </div>
+  <h1>全体チャット</h1>
+  <div id="chatArea"></div>
+  <input type="text" id="messageInput">
+  <button id="sendBtn">送信</button>
 
-    <div id="loginSection">
-      <h2>ログイン</h2>
-      <input type="text" id="loginName" placeholder="名前">
-      <input type="password" id="loginPassword" placeholder="合言葉">
-      <button id="loginBtn">ログイン</button>
-      <p id="loginMessage"></p>
-    </div>
-  </div>
+  <!-- 個人チャット一覧 -->
+  <h2>個人チャット一覧</h2>
+  <div id="dmList"></div>
 
-  <script type="module" src="script.js"></script>
+  <!-- オンライン人数 -->
+  <div id="onlineCount"></div>
+
+  <!-- Firebase 初期化スクリプト -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+
+  <!-- chat.js 読み込み -->
+  <script src="chat.js"></script>
+
 </body>
 </html>
