@@ -59,75 +59,72 @@ let targetUid = "";
 /* ================= ログイン監視 ================= */
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) return;
+  if (!user) {
+    alert("ログインしてください");
+    location.href = "index.html";
+    return;
+  }
 
   myUid = user.uid;
 
-  // 自分の名前取得
   const snap = await getDoc(doc(db, "users", myUid));
   myName = snap.exists() ? snap.data().name : "名無し";
 
   // オンライン登録
-  await setDoc(doc(db, "onlineUsers", myUid), {
-    name: myName,
-    joinedAt: serverTimestamp()
-  });
+  await setDoc(doc(db, "onlineUsers", myUid), { name: myName, joinedAt: serverTimestamp() });
 
   // ページ閉じたらオンライン削除
   window.addEventListener("beforeunload", () => {
     deleteDoc(doc(db, "onlineUsers", myUid));
   });
 
-  // 個人チャット一覧表示
+  // 個人チャット一覧読み込み
   loadDMList();
+
+  // 全体チャット描画開始
+  loadMessages();
+
+  // 送信ボタン設定
+  sendBtn.onclick = async () => {
+    if (!messageInput.value.trim()) return;
+
+    await addDoc(collection(db, "messages"), {
+      uid: myUid,
+      author: myName,
+      text: messageInput.value,
+      timestamp: serverTimestamp()
+    });
+
+    messageInput.value = "";
+  };
 });
 
-/* ================= オンライン人数 ================= */
+/* ================= 全体チャット描画関数 ================= */
+function loadMessages() {
+  const q = query(collection(db, "messages"), orderBy("timestamp"));
 
-onSnapshot(collection(db, "onlineUsers"), (snap) => {
-  onlineCount.textContent = `オンライン：${snap.size}人`;
-});
+  onSnapshot(q, (snap) => {
+    chatArea.innerHTML = "";
 
-/* ================= メッセージ送信 ================= */
+    snap.forEach(docSnap => {
+      const m = docSnap.data();
+      const div = document.createElement("div");
 
-sendBtn.onclick = async () => {
-  if (!messageInput.value.trim()) return;
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = m.author;
+      nameSpan.style.color = "blue";
+      nameSpan.style.cursor = "pointer";
+      nameSpan.onclick = () => openProfile(m.uid);
 
-  await addDoc(collection(db, "messages"), {
-    uid: myUid,
-    author: myName,
-    text: messageInput.value,
-    timestamp: serverTimestamp()
+      div.appendChild(nameSpan);
+      div.append(`：${m.text}`);
+
+      chatArea.appendChild(div);
+    });
+
+    chatArea.scrollTop = chatArea.scrollHeight;
   });
-
-  messageInput.value = "";
-};
-
-/* ================= 全体チャット表示 ================= */
-
-const q = query(collection(db, "messages"), orderBy("timestamp"));
-
-onSnapshot(q, (snap) => {
-  chatArea.innerHTML = "";
-
-  snap.forEach(docSnap => {
-    const m = docSnap.data();
-    const div = document.createElement("div");
-
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = m.author;
-    nameSpan.style.color = "blue";
-    nameSpan.style.cursor = "pointer";
-    nameSpan.onclick = () => openProfile(m.uid);
-
-    div.appendChild(nameSpan);
-    div.append(`：${m.text}`);
-
-    chatArea.appendChild(div);
-  });
-
-  chatArea.scrollTop = chatArea.scrollHeight;
-});
+}
 
 /* ================= プロフィール表示 ================= */
 
@@ -203,7 +200,6 @@ async function loadDMList() {
     const btn = document.createElement("button");
     btn.textContent = "個人チャットに行く";
     btn.onclick = () => {
-      // 個人チャット画面に遷移（例）
       location.href = `private_chat.html?roomId=${docSnap.id}&uid=${otherUid}`;
     };
     div.appendChild(btn);
