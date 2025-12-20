@@ -1,77 +1,160 @@
-// Firebase SDK imports
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+  doc,
+  getDoc,
+  query,
+  orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase 設定
+// Firebase 初期化
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
   projectId: "anon-chat-de585",
   storageBucket: "anon-chat-de585.firebasestorage.app",
   messagingSenderId: "1035093625910",
-  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97",
-  measurementId: "G-0KWK7SRJHZ"
+  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
 };
 
-// 初期化
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
-console.log("Firebase 初期化完了");
 
-// HTML要素取得
-const regName = document.getElementById("regName");
-const regPassword = document.getElementById("regPassword");
-const ageInput = document.getElementById("age");
-const locationInput = document.getElementById("location");
-const bioInput = document.getElementById("bio");
-const registerBtn = document.getElementById("registerBtn");
-const registerMessage = document.getElementById("registerMessage");
+// HTML要素
+const chatArea = document.getElementById("chatArea");
+const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
 
-const loginName = document.getElementById("loginName");
-const loginPassword = document.getElementById("loginPassword");
-const loginBtn = document.getElementById("loginBtn");
-const loginMessage = document.getElementById("loginMessage");
+const recruitArea = document.getElementById("recruitArea");
+const recruitInput = document.getElementById("recruitInput");
+const recruitBtn = document.getElementById("recruitBtn");
 
-// 新規登録
-registerBtn.addEventListener("click", async () => {
-  const email = `${regName.value}@himachat.com`; // 疑似メール
-  try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, regPassword.value);
-    const uid = userCredential.user.uid;
+const profileBox = document.getElementById("profileBox");
+const pName = document.getElementById("pName");
+const pSex = document.getElementById("pSex");
+const pAge = document.getElementById("pAge");
+const pLocation = document.getElementById("pLocation");
+const pBio = document.getElementById("pBio");
+const startPrivateBtn = document.getElementById("startPrivateBtn");
 
-    // Firestore にプロフィール保存
-    await setDoc(doc(db, "users", uid), {
-      name: regName.value,
-      age: ageInput.value,
-      location: locationInput.value,
-      bio: bioInput.value
-    });
+// URLから自分のuidを取得
+const myUid = new URLSearchParams(location.search).get("uid");
+let targetUid = "";
 
-    alert("登録完了！ログインしてください"); // iPadでも確認可能
-  } catch (error) {
-    alert("登録に失敗しました: " + error.message);
-    console.error(error);
-  }
+// 名前取得
+async function getUserName(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? snap.data().name : "名無し";
+}
+
+// -------------------- 全体チャット --------------------
+
+sendBtn.onclick = async () => {
+  const text = messageInput.value.trim();
+  if (!text) return;
+
+  const author = await getUserName(myUid);
+
+  await addDoc(collection(db, "messages"), {
+    uid: myUid,
+    author,
+    text,
+    timestamp: serverTimestamp()
+  });
+
+  messageInput.value = "";
+};
+
+const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
+onSnapshot(msgQuery, snap => {
+  chatArea.innerHTML = "";
+  snap.forEach(docSnap => {
+    const m = docSnap.data();
+    const div = document.createElement("div");
+
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = m.author;
+    nameSpan.style.color = "blue";
+    nameSpan.style.cursor = "pointer";
+    nameSpan.onclick = () => openProfile(m.uid);
+
+    div.appendChild(nameSpan);
+    div.append(`：${m.text}`);
+
+    chatArea.appendChild(div);
+  });
+  chatArea.scrollTop = chatArea.scrollHeight;
 });
 
-// ログイン
-loginBtn.addEventListener("click", async () => {
-  const email = `${loginName.value}@himachat.com`;
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, loginPassword.value);
-    alert("ログイン成功！");
-    // chat.html に遷移
-    window.location.href = "chat.html?uid=" + userCredential.user.uid;
-  } catch (error) {
-    if (error.code === "auth/user-not-found") {
-      alert("その名前は登録されていません");
-    } else if (error.code === "auth/wrong-password") {
-      alert("合言葉が間違っています");
-    } else {
-      alert("ログインに失敗しました: " + error.message);
-    }
-    console.error(error);
-  }
+// -------------------- 募集欄 --------------------
+
+recruitBtn.onclick = async () => {
+  const text = recruitInput.value.trim();
+  if (!text) return;
+
+  const author = await getUserName(myUid);
+
+  await addDoc(collection(db, "recruits"), {
+    uid: myUid,
+    author,
+    text,
+    timestamp: serverTimestamp()
+  });
+
+  recruitInput.value = "";
+};
+
+const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
+onSnapshot(recruitQuery, snap => {
+  recruitArea.innerHTML = "";
+  snap.forEach(docSnap => {
+    const r = docSnap.data();
+    const div = document.createElement("div");
+
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = r.author;
+    nameSpan.style.color = "blue";
+    nameSpan.style.cursor = "pointer";
+    nameSpan.onclick = () => openProfile(r.uid);
+
+    div.appendChild(nameSpan);
+    div.append(`：${r.text}`);
+
+    recruitArea.appendChild(div);
+  });
 });
+
+// -------------------- プロフィール --------------------
+
+async function openProfile(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists()) return;
+
+  const u = snap.data();
+  targetUid = uid;
+
+  pName.textContent = `名前：${u.name}`;
+  pSex.textContent = `性別：${u.sex || ""}`;
+  pAge.textContent = `年齢：${u.age || ""}`;
+  pLocation.textContent = `出身：${u.location || ""}`;
+  pBio.textContent = `ひとこと：${u.bio || ""}`;
+
+  profileBox.style.display = "block";
+}
+
+// -------------------- 個人チャット（未完成） --------------------
+
+startPrivateBtn.onclick = async () => {
+  if (!targetUid || targetUid === myUid) return;
+
+  await addDoc(collection(db, "private_rooms"), {
+    members: [myUid, targetUid],
+    createdAt: serverTimestamp()
+  });
+
+  alert("個人チャット作成（未実装）");
+};
