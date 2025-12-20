@@ -1,10 +1,18 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, addDoc, onSnapshot,
-  serverTimestamp, doc, getDoc
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  serverTimestamp,
+  doc,
+  getDoc,
+  query,
+  orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* ===== Firebase 初期化 ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
@@ -18,81 +26,84 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// HTML
+/* ===== HTML ===== */
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 
-const profileBox = document.getElementById("profileBox");
-const pName = document.getElementById("pName");
-const pAge = document.getElementById("pAge");
-const pLocation = document.getElementById("pLocation");
-const pBio = document.getElementById("pBio");
-const startPrivateBtn = document.getElementById("startPrivateBtn");
+/* ===== ログイン確認 ===== */
+let myUid = "";
+let myName = "";
 
-const uid = new URLSearchParams(location.search).get("uid");
-let targetUid = "";
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    location.href = "index.html";
+    return;
+  }
 
-// ユーザー名取得
-async function getUserName(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? snap.data().name : "名無し";
-}
+  myUid = user.uid;
 
-// 送信
+  const snap = await getDoc(doc(db, "users", myUid));
+  myName = snap.exists() ? snap.data().name : "名無し";
+
+  startChatListener();
+});
+
+/* ===== メッセージ送信 ===== */
 sendBtn.onclick = async () => {
-  if (!messageInput.value.trim()) return;
-  const name = await getUserName(uid);
+  const text = messageInput.value.trim();
+  if (!text) return;
 
   await addDoc(collection(db, "messages"), {
-    uid,
-    author: name,
-    text: messageInput.value,
+    uid: myUid,
+    authorName: myName,
+    text: text,
     timestamp: serverTimestamp()
   });
 
   messageInput.value = "";
 };
 
-// 表示
-onSnapshot(collection(db, "messages"), snap => {
-  chatArea.innerHTML = "";
-  snap.forEach(d => {
-    const m = d.data();
-    const div = document.createElement("div");
+/* ===== メッセージ表示 ===== */
+function startChatListener() {
+  const q = query(
+    collection(db, "messages"),
+    orderBy("timestamp")
+  );
 
-    const name = document.createElement("span");
-    name.textContent = m.author;
-    name.style.color = "blue";
-    name.style.cursor = "pointer";
-    name.onclick = () => openProfile(m.uid);
+  onSnapshot(q, snap => {
+    chatArea.innerHTML = "";
 
-    div.appendChild(name);
-    div.append(`: ${m.text}`);
-    chatArea.appendChild(div);
+    snap.forEach(d => {
+      const m = d.data();
+      const div = document.createElement("div");
+
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = m.authorName;
+      nameSpan.style.cursor = "pointer";
+
+      // 自分の発言
+      if (m.uid === myUid) {
+        nameSpan.style.color = "blue";
+        nameSpan.onclick = () => {
+          location.href = "profile.html";
+        };
+      } 
+      // 相手の発言
+      else {
+        nameSpan.onclick = () => {
+          location.href = `user.html?uid=${m.uid}`;
+        };
+      }
+
+      const textSpan = document.createElement("span");
+      textSpan.textContent = `: ${m.text}`;
+
+      div.appendChild(nameSpan);
+      div.appendChild(textSpan);
+      chatArea.appendChild(div);
+    });
+
+    chatArea.scrollTop = chatArea.scrollHeight;
   });
-});
-
-// プロフィール表示
-async function openProfile(otherUid) {
-  const snap = await getDoc(doc(db, "users", otherUid));
-  if (!snap.exists()) return;
-
-  const u = snap.data();
-  targetUid = otherUid;
-
-  pName.textContent = `名前：${u.name}`;
-  pAge.textContent = `年齢：${u.age}`;
-  pLocation.textContent = `出身：${u.location}`;
-  pBio.textContent = `ひとこと：${u.bio}`;
-  profileBox.style.display = "block";
 }
-
-// 個人チャット作成
-startPrivateBtn.onclick = async () => {
-  const room = await addDoc(collection(db, "privateRooms"), {
-    members: [uid, targetUid],
-    createdAt: serverTimestamp()
-  });
-  alert("個人チャット作成（次で画面遷移）");
-};
