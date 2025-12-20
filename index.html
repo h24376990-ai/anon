@@ -2,48 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>チャットアプリ</title>
-  <style>
-    /* 簡単なスタイル */
-    .dm-item { margin-bottom: 10px; }
-    .dm-name { color: blue; margin-right: 10px; cursor: pointer; }
-    .start-chat-btn { padding: 2px 6px; cursor: pointer; }
-  </style>
+  <title>チャットログインテスト</title>
 </head>
 <body>
 
   <!-- ログイン画面 -->
   <div id="loginBox">
     <h2>ログイン</h2>
-    <input type="email" id="emailInput" placeholder="メールアドレス">
-    <input type="password" id="passwordInput" placeholder="パスワード">
+    <input type="email" id="emailInput" placeholder="メールアドレス"><br>
+    <input type="password" id="passwordInput" placeholder="パスワード"><br>
     <button id="loginBtn">ログイン</button>
   </div>
 
-  <!-- チャット画面（ログイン後に表示） -->
+  <!-- ログイン成功後に表示 -->
   <div id="chatBox" style="display:none;">
-    <!-- 全体チャット -->
-    <h1>全体チャット</h1>
-    <div id="chatArea"></div>
-    <input type="text" id="messageInput">
-    <button id="sendBtn">送信</button>
-
-    <!-- 個人チャット一覧 -->
-    <h2>個人チャット一覧</h2>
-    <div id="dmList"></div>
-
-    <!-- オンライン人数 -->
-    <div id="onlineCount"></div>
-
-    <!-- プロフィール表示や個人チャット作成ボタンもここに置く -->
+    <h2>ログイン成功！</h2>
+    <p id="welcomeText"></p>
   </div>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
-
-  <!-- chat.js -->
   <script src="chat.js"></script>
 </body>
 </html>
