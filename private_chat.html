@@ -1,25 +1,22 @@
-<a href="dm_list.html">← 個人チャット一覧に戻る</a>
-
-<h2 id="chatTitle">チャット</h2>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>個人チャット - 暇チャット</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>個人チャット</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>個人チャット</h1>
 
-    <!-- メッセージ表示 -->
-    <div id="chatArea" class="chat-area"></div>
+  <a href="dm_list.html">← 個人チャット一覧に戻る</a>
 
-    <!-- メッセージ入力 -->
-    <input type="text" id="messageInput" placeholder="メッセージを入力">
-    <button id="sendBtn">送信</button>
-  </div>
+  <h2 id="chatTitle">チャット</h2>
+
+  <div id="messages"></div>
+
+  <form id="messageForm">
+    <input type="text" id="messageInput" placeholder="メッセージを入力" required />
+    <button type="submit">送信</button>
+  </form>
 
   <script type="module" src="private_chat.js"></script>
 </body>
