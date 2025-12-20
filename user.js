@@ -52,3 +52,16 @@ loadProfile();
 privateChatBtn.addEventListener("click", () => {
   alert("次は個人チャット機能を作るよ");
 });
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const auth = getAuth(app);
+
+privateChatBtn.addEventListener("click", () => {
+  const myUid = auth.currentUser.uid;
+  const otherUid = uid;
+
+  const roomId = [myUid, otherUid].sort().join("_");
+
+  window.location.href = `private_chat.html?roomId=${roomId}`;
+});
+
