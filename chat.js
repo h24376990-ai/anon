@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, doc, getDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, doc, getDoc, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Firebase 初期化
 const firebaseConfig = {
@@ -60,8 +60,9 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-// メッセージ表示（リアルタイム）
-const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
+// 最新50件だけ取得＋スクロール固定
+const msgQuery = query(collection(db, "messages"), orderBy("timestamp"), limit(50));
+
 onSnapshot(msgQuery, snap => {
   chatArea.innerHTML = "";
   snap.forEach(docSnap => {
@@ -79,7 +80,7 @@ onSnapshot(msgQuery, snap => {
 
     chatArea.appendChild(div);
   });
-  chatArea.scrollTop = chatArea.scrollHeight;
+  chatArea.scrollTop = chatArea.scrollHeight; // 最新メッセージ下に固定
 });
 
 // -------------------- 募集欄 --------------------
@@ -101,11 +102,12 @@ recruitBtn.onclick = async () => {
   recruitInput.value = "";
 };
 
-// 表示
-const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
+// 表示（最新10件）
+const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp", "desc"), limit(10));
+
 onSnapshot(recruitQuery, snap => {
   recruitArea.innerHTML = "";
-  snap.forEach(docSnap => {
+  snap.docs.reverse().forEach(docSnap => {  // 古い順に表示
     const r = docSnap.data();
     const div = document.createElement("div");
     div.textContent = `${r.author}：${r.text}`;
@@ -136,10 +138,4 @@ async function openProfile(uid) {
 startPrivateBtn.onclick = async () => {
   if (!targetUid || targetUid === myUid) return;
 
-  await addDoc(collection(db, "private_rooms"), {
-    members: [myUid, targetUid],
-    createdAt: serverTimestamp()
-  });
-
-  alert("個人チャット作成（次で画面遷移）");
-};
+  await addDoc(colle
