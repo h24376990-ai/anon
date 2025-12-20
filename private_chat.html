@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -6,16 +7,12 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<a href="dm_list.html">← 個人チャット一覧</a>
-<h2 id="chatTitle">チャット</h2>
-
-<div id="messages"></div>
-
-<form id="messageForm">
-  <input id="messageInput" required placeholder="メッセージ">
-  <button>送信</button>
-</form>
+<div class="container">
+  <h1>個人チャット</h1>
+  <div id="chatArea"></div>
+  <input id="messageInput" placeholder="メッセージ">
+  <button id="sendBtn">送信</button>
+</div>
 
 <script type="module" src="private_chat.js"></script>
 </body>
