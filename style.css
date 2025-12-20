@@ -1,98 +1,19 @@
 body {
-  background: #f2f2f2;
   font-family: sans-serif;
 }
 
-.register-container {
-  width: 320px;
-  margin: 80px auto;
-  padding: 20px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+#privateList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
-.register-container h1 {
-  text-align: center;
-  margin-bottom: 5px;
-}
-
-.subtitle {
-  text-align: center;
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 20px;
-}
-
-.register-container input {
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 8px;
-  font-size: 14px;
-}
-
-.register-container button {
-  width: 100%;
-  padding: 10px;
-  background: #4CAF50;
-  color: white;
-  border: none;
+#privateList li {
+  padding: 8px 12px;
+  border-bottom: 1px solid #ccc;
   cursor: pointer;
 }
 
-#message {
-  margin-top: 10px;
-  text-align: center;
-  color: red;
+#privateList li:hover {
+  background: #f0f0f0;
 }
-/* ===== 個人チャット一覧 ===== */
-
-#dmList {
-  max-width: 600px;
-  margin: 20px auto;
-}
-
-.dm-item {
-  background: #fff;
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-}
-
-.dm-item strong {
-  font-size: 16px;
-}
-
-.dm-item button {
-  margin-top: 8px;
-  padding: 6px 12px;
-  background: #2196F3;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.dm-item button:hover {
-  opacity: 0.9;
-}
-body {
-  background: #f2f2f2;
-  font-family: sans-serif;
-}
-
-.dm-item {
-  background: white;
-  padding: 10px;
-  margin: 10px 0;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.1);
-  cursor: pointer;
-}
-
-.last-message {
-  font-size: 13px;
-  color: #666;
-}
-
