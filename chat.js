@@ -8,7 +8,8 @@ import {
   doc,
   getDoc,
   query,
-  orderBy
+  orderBy,
+  limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Firebase 初期化
@@ -56,7 +57,7 @@ async function getUserName(uid) {
   return snap.exists() ? snap.data().name : "名無し";
 }
 
-// -------------------- 全体チャット --------------------
+// -------------------- 全体チャット（軽量化） --------------------
 
 sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
@@ -74,7 +75,12 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
+const msgQuery = query(
+  collection(db, "messages"),
+  orderBy("timestamp"),
+  limit(50)
+);
+
 onSnapshot(msgQuery, snap => {
   chatArea.innerHTML = "";
 
@@ -97,7 +103,7 @@ onSnapshot(msgQuery, snap => {
   chatArea.scrollTop = chatArea.scrollHeight;
 });
 
-// -------------------- 募集欄 --------------------
+// -------------------- 募集欄（軽量化） --------------------
 
 recruitBtn.onclick = async () => {
   const text = recruitInput.value.trim();
@@ -115,7 +121,12 @@ recruitBtn.onclick = async () => {
   recruitInput.value = "";
 };
 
-const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
+const recruitQuery = query(
+  collection(db, "recruits"),
+  orderBy("timestamp"),
+  limit(20)
+);
+
 onSnapshot(recruitQuery, snap => {
   recruitArea.innerHTML = "";
 
@@ -145,4 +156,54 @@ async function openProfile(uid) {
   const u = snap.data();
   targetUid = uid;
 
-  pName.textContent = `名前：${
+  pName.textContent = `名前：${u.name}`;
+  pSex.textContent = `性別：${u.sex || ""}`;
+  pAge.textContent = `年齢：${u.age || ""}`;
+  pLocation.textContent = `出身：${u.location || ""}`;
+  pBio.textContent = `ひとこと：${u.bio || ""}`;
+
+  profileBox.style.display = "block";
+}
+
+// -------------------- 個人チャット作成 --------------------
+
+startPrivateBtn.onclick = async () => {
+  if (!targetUid || targetUid === myUid) return;
+
+  await addDoc(collection(db, "private_rooms"), {
+    members: [myUid, targetUid],
+    createdAt: serverTimestamp()
+  });
+
+  alert("個人チャットを作成した");
+};
+
+// -------------------- 個人チャット一覧 --------------------
+
+const roomQuery = query(
+  collection(db, "private_rooms"),
+  orderBy("createdAt")
+);
+
+onSnapshot(roomQuery, async snap => {
+  privateList.innerHTML = "";
+
+  for (const docSnap of snap.docs) {
+    const room = docSnap.data();
+    if (!room.members.includes(myUid)) continue;
+
+    const otherUid = room.members.find(uid => uid !== myUid);
+    const otherName = await getUserName(otherUid);
+
+    const div = document.createElement("div");
+    div.textContent = otherName;
+    div.style.color = "blue";
+    div.style.cursor = "pointer";
+
+    div.onclick = () => {
+      location.href = `private.html?roomId=${docSnap.id}&uid=${myUid}`;
+    };
+
+    privateList.appendChild(div);
+  }
+});
