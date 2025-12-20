@@ -1,7 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { 
-  getAuth, 
-  onAuthStateChanged 
+import {
+  getAuth,
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore,
@@ -37,7 +37,6 @@ const db = getFirestore(app);
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
-
 const onlineCount = document.getElementById("onlineCount");
 
 const profileBox = document.getElementById("profileBox");
@@ -70,16 +69,26 @@ onAuthStateChanged(auth, async (user) => {
     joinedAt: serverTimestamp()
   });
 
-  // ページ閉じたらオンライン削除
+  // タブ・ページを閉じたとき
   window.addEventListener("beforeunload", () => {
     deleteDoc(doc(db, "onlineUsers", myUid));
   });
 });
 
+/* ================= 退出検知（強化） ================= */
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && myUid) {
+    deleteDoc(doc(db, "onlineUsers", myUid));
+  }
+});
+
 /* ================= オンライン人数 ================= */
 
 onSnapshot(collection(db, "onlineUsers"), (snap) => {
-  onlineCount.textContent = `オンライン：${snap.size}人`;
+  if (onlineCount) {
+    onlineCount.textContent = `オンライン：${snap.size}人`;
+  }
 });
 
 /* ================= メッセージ送信 ================= */
