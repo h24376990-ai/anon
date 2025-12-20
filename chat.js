@@ -79,7 +79,8 @@ function startChatListener() {
       const div = document.createElement("div");
 
       const nameSpan = document.createElement("span");
-      nameSpan.textContent = m.authorName;
+      nameSpan.textContent = m.authorName || m.author || "名無し";
+
       nameSpan.style.cursor = "pointer";
 
       // 自分の発言
