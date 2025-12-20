@@ -1,58 +1,67 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
-  getFirestore, collection, addDoc, onSnapshot,
-  serverTimestamp, doc, getDoc, setDoc, query, orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  getFirestore, collection, addDoc, onSnapshot, serverTimestamp, doc, getDoc, query, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* Firebase初期化 */
+const firebaseConfig = { /* 省略 */ };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const params = new URLSearchParams(location.search);
-const partnerUid = params.get("uid");
+/* HTML */
+const chatArea = document.getElementById("chatArea");
+const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
 
-const messages = document.getElementById("messages");
-const form = document.getElementById("messageForm");
-const input = document.getElementById("messageInput");
-const title = document.getElementById("chatTitle");
+/* 状態 */
+let myUid = "";
+let myName = "";
 
-onAuthStateChanged(auth, async user => {
-  if (!user || !partnerUid) return location.href = "index.html";
+// 選択した相手
+const targetUid = new URLSearchParams(location.search).get("uid");
+let roomId = [targetUid].sort().join("_"); // roomIdを簡易で作る
 
-  const myUid = user.uid;
-  const roomId = [myUid, partnerUid].sort().join("_");
+/* ログイン監視 */
+onAuthStateChanged(auth, async (user) => {
+  if (!user) return;
+  myUid = user.uid;
 
-  const userSnap = await getDoc(doc(db, "users", partnerUid));
-  if (userSnap.exists()) title.textContent = `${userSnap.data().name} さんとのチャット`;
+  // 自分の名前取得
+  const snap = await getDoc(doc(db, "users", myUid));
+  myName = snap.exists() ? snap.data().name : "名無し";
 
-  const q = query(collection(db, "private_rooms", roomId, "messages"), orderBy("timestamp"));
-  onSnapshot(q, snap => {
-    messages.innerHTML = "";
-    snap.forEach(d => {
+  // roomId作成
+  const sorted = [myUid, targetUid].sort();
+  roomId = sorted.join("_");
+
+  // チャット表示
+  const messagesRef = collection(db, "private_rooms", roomId, "messages");
+  const q = query(messagesRef, orderBy("timestamp"));
+
+  onSnapshot(q, (snap) => {
+    chatArea.innerHTML = "";
+    snap.forEach(docSnap => {
+      const m = docSnap.data();
       const div = document.createElement("div");
-      div.textContent = d.data().text;
-      div.style.textAlign = d.data().uid === myUid ? "right" : "left";
-      messages.appendChild(div);
+      div.textContent = `${m.author}：${m.text}`;
+      chatArea.appendChild(div);
     });
-    messages.scrollTop = messages.scrollHeight;
+    chatArea.scrollTop = chatArea.scrollHeight;
+  });
+});
+
+/* 送信 */
+sendBtn.onclick = async () => {
+  if (!messageInput.value.trim()) return;
+
+  await addDoc(collection(db, "private_rooms", roomId, "messages"), {
+    uid: myUid,
+    author: myName,
+    text: messageInput.value,
+    timestamp: serverTimestamp()
   });
 
-  form.onsubmit = async e => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text) return;
-
-    await addDoc(collection(db, "private_rooms", roomId, "messages"), {
-      uid: myUid, text, timestamp: serverTimestamp()
-    });
-
-    await setDoc(doc(db, "private_rooms", roomId), {
-      members: [myUid, partnerUid],
-      lastMessage: text,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    input.value = "";
-  };
-});
+  messageInput.value = "";
+};
