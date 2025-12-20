@@ -31,10 +31,11 @@ const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 
-/* ===== ログイン確認 ===== */
+/* ===== ログイン情報 ===== */
 let myUid = "";
 let myName = "";
 
+/* ===== ログイン確認 ===== */
 onAuthStateChanged(auth, async user => {
   if (!user) {
     location.href = "index.html";
@@ -79,22 +80,30 @@ function startChatListener() {
       const div = document.createElement("div");
 
       const nameSpan = document.createElement("span");
-      nameSpan.textContent = m.authorName || m.author || "名無し";
 
+      // 🔐 旧データ対応（author / authorName）
+      const displayName = m.authorName || m.author || "名無し";
+      nameSpan.textContent = displayName;
       nameSpan.style.cursor = "pointer";
 
-      // 自分の発言
-      if (m.uid === myUid) {
+      const authorUid = m.uid || null;
+
+      // ===== 自分の発言 =====
+      if (authorUid && authorUid === myUid) {
         nameSpan.style.color = "blue";
         nameSpan.onclick = () => {
           location.href = "profile.html";
         };
-      } 
-      // 相手の発言
-      else {
+      }
+      // ===== 相手の発言 =====
+      else if (authorUid) {
         nameSpan.onclick = () => {
-          location.href = `user.html?uid=${m.uid}`;
+          location.href = `user.html?uid=${authorUid}`;
         };
+      }
+      // ===== 古いメッセージ（uidなし） =====
+      else {
+        nameSpan.style.cursor = "default";
       }
 
       const textSpan = document.createElement("span");
