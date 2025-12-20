@@ -7,20 +7,21 @@
 </head>
 <body>
 <div class="register-container">
-  <h1>暇チャット</h1>
-  <div class="subtitle">ログインしてください</div>
+  <h1>ログイン</h1>
+  <div class="subtitle">名前と合言葉でログイン</div>
 
   <input type="text" id="nameInput" placeholder="名前">
-  <input type="password" id="passwordInput" placeholder="パスワード">
+  <input type="password" id="passwordInput" placeholder="合言葉">
   <button id="loginBtn">ログイン</button>
 
-  <div id="message"></div>
+  <p id="message"></p>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
@@ -43,28 +44,29 @@ loginBtn.onclick = async () => {
   const password = passwordInput.value.trim();
 
   if (!name || !password) {
-    message.textContent = "名前とパスワードを入力してください";
+    message.textContent = "名前と合言葉を入力してください";
     return;
   }
 
-  try {
-    const q = query(
-      collection(db, "users"),
-      where("name", "==", name),
-      where("password", "==", password)
-    );
-    const snap = await getDocs(q);
+  // users コレクションを検索
+  const q = query(
+    collection(db, "users"),
+    where("name", "==", name),
+    where("password", "==", password) // Firestore に password フィールドがある前提
+  );
 
-    if (snap.empty) {
-      message.textContent = "ログインに失敗しました";
-      return;
-    }
+  const snap = await getDocs(q);
 
-    const uid = snap.docs[0].id;
-    location.href = `chat.html?uid=${uid}`;
-  } catch (err) {
-    message.textContent = "ログイン中にエラーが発生しました: " + err.message;
+  if (snap.empty) {
+    message.textContent = "ログインに失敗しました";
+    return;
   }
+
+  // ユーザー UID を取得して chat.html に遷移
+  const userDoc = snap.docs[0];
+  const uid = userDoc.id;
+
+  location.href = `chat.html?uid=${uid}`;
 };
 </script>
 </body>
