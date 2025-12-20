@@ -14,7 +14,9 @@ import {
   setDoc,
   deleteDoc,
   query,
-  orderBy
+  orderBy,
+  where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ================= Firebase ================= */
@@ -75,6 +77,9 @@ onAuthStateChanged(auth, async (user) => {
   window.addEventListener("beforeunload", () => {
     deleteDoc(doc(db, "onlineUsers", myUid));
   });
+
+  // 個人チャット一覧表示
+  loadDMList();
 });
 
 /* ================= オンライン人数 ================= */
@@ -98,7 +103,7 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-/* ================= メッセージ表示 ================= */
+/* ================= 全体チャット表示 ================= */
 
 const q = query(collection(db, "messages"), orderBy("timestamp"));
 
@@ -113,7 +118,6 @@ onSnapshot(q, (snap) => {
     nameSpan.textContent = m.author;
     nameSpan.style.color = "blue";
     nameSpan.style.cursor = "pointer";
-
     nameSpan.onclick = () => openProfile(m.uid);
 
     div.appendChild(nameSpan);
@@ -147,10 +151,63 @@ async function openProfile(uid) {
 startPrivateBtn.onclick = async () => {
   if (!targetUid || targetUid === myUid) return;
 
-  await addDoc(collection(db, "privateRooms"), {
+  // すでに存在するか確認
+  const q = query(
+    collection(db, "private_rooms"),
+    where("members", "array-contains", myUid)
+  );
+  const snap = await getDocs(q);
+  let exists = false;
+  snap.forEach(docSnap => {
+    const data = docSnap.data();
+    if (data.members.includes(targetUid)) exists = true;
+  });
+
+  if (exists) {
+    alert("すでに個人チャットがあります（次で画面遷移）");
+    return;
+  }
+
+  await addDoc(collection(db, "private_rooms"), {
     members: [myUid, targetUid],
     createdAt: serverTimestamp()
   });
 
   alert("個人チャット作成（次で画面遷移）");
+
+  loadDMList(); // 作成後に一覧更新
 };
+
+/* ================= 個人チャット一覧表示 ================= */
+
+async function loadDMList() {
+  dmList.innerHTML = "";
+
+  const q = query(
+    collection(db, "private_rooms"),
+    where("members", "array-contains", myUid)
+  );
+  const snap = await getDocs(q);
+
+  for (const docSnap of snap.docs) {
+    const data = docSnap.data();
+    const otherUid = data.members.find(uid => uid !== myUid);
+    if (!otherUid) continue;
+
+    const userSnap = await getDoc(doc(db, "users", otherUid));
+    const name = userSnap.exists() ? userSnap.data().name : "名無し";
+
+    const div = document.createElement("div");
+    div.className = "dm-item";
+    div.innerHTML = `<strong>${name}</strong>`;
+    const btn = document.createElement("button");
+    btn.textContent = "個人チャットに行く";
+    btn.onclick = () => {
+      // 個人チャット画面に遷移（例）
+      location.href = `private_chat.html?roomId=${docSnap.id}&uid=${otherUid}`;
+    };
+    div.appendChild(btn);
+
+    dmList.appendChild(div);
+  }
+}
