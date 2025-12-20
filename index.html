@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>チャットログインテスト</title>
+</head>
+<body>
+
+  <!-- ログイン画面 -->
+  <div id="loginBox">
+    <h2>ログイン</h2>
+    <input type="email" id="emailInput" placeholder="メールアドレス"><br>
+    <input type="password" id="passwordInput" placeholder="パスワード"><br>
+    <button id="loginBtn">ログイン</button>
+  </div>
+
+  <!-- ログイン成功後に表示 -->
+  <div id="chatBox" style="display:none;">
+    <h2>ログイン成功！</h2>
+    <p id="welcomeText"></p>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>
