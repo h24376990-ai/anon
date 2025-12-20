@@ -68,11 +68,7 @@ onSnapshot(q, (snap) => {
 
 /* 個人チャット一覧表示 */
 async function updateDMList() {
-  dmList.innerHTML = "";
-
-  const roomsSnap = await getDoc(collection(db, "private_rooms"));
   const roomsQuery = query(collection(db, "private_rooms"));
-
   onSnapshot(roomsQuery, async (snap) => {
     dmList.innerHTML = "";
 
@@ -80,20 +76,19 @@ async function updateDMList() {
       const room = roomDoc.data();
       if (!room.members.includes(myUid)) return;
 
-      // 相手UID取得
       const otherUid = room.members.find(uid => uid !== myUid);
       const userSnap = await getDoc(doc(db, "users", otherUid));
       if (!userSnap.exists()) return;
-
       const user = userSnap.data();
+
       const div = document.createElement("div");
       div.className = "dm-item";
       div.innerHTML = `<strong>${user.name}</strong>`;
       const btn = document.createElement("button");
       btn.textContent = "チャット";
       btn.onclick = () => {
-        targetUid = otherUid;
-        alert(`個人チャット画面へ（${user.name}）`);
+        // 個人チャット画面へ遷移
+        location.href = `private_chat.html?uid=${otherUid}`;
       };
       div.appendChild(btn);
       dmList.appendChild(div);
@@ -114,12 +109,12 @@ async function openProfile(uid) {
   profileBox.style.display = "block";
 }
 
-/* 個人チャット作成 */
+/* 個人チャット作成（ボタン） */
 startPrivateBtn.onclick = async () => {
   if (!targetUid || targetUid === myUid) return;
   await addDoc(collection(db, "private_rooms"), {
     members: [myUid, targetUid],
     createdAt: serverTimestamp()
   });
-  alert("個人チャット作成（次で画面遷移）");
+  location.href = `private_chat.html?uid=${targetUid}`;
 };
