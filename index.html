@@ -2,22 +2,22 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>暇チャット</title>
+  <title>暇チャット ログイン</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="register-container">
     <h1>暇チャット</h1>
-    <div class="subtitle">名前とパスワードで登録 / ログイン</div>
+    <div class="subtitle">ログインしてください</div>
 
-    <input type="text" id="nameInput" placeholder="名前">
-    <input type="password" id="passInput" placeholder="パスワード">
-    <button id="registerBtn">登録</button>
+    <input type="email" id="emailInput" placeholder="メール">
+    <input type="password" id="passwordInput" placeholder="パスワード">
     <button id="loginBtn">ログイン</button>
 
     <div id="message"></div>
   </div>
 
-  <script type="module" src="script.js"></script>
+  <!-- ログイン専用JS -->
+  <script type="module" src="login.js"></script>
 </body>
 </html>
