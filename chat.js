@@ -47,36 +47,41 @@ const startPrivateBtn = document.getElementById("startPrivateBtn");
 let myUid = "";
 let targetUid = "";
 
-// Auth
-signInAnonymously(auth);
-
-onAuthStateChanged(auth, user => {
+/* ===== Auth（重要修正ポイント） ===== */
+onAuthStateChanged(auth, async (user) => {
   if (user) {
     myUid = user.uid;
+    console.log("ログインUID:", myUid);
     init();
+  } else {
+    await signInAnonymously(auth);
   }
 });
 
+/* ===== utils ===== */
 async function getUserName(uid) {
   const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? snap.data().name : "名無し";
+  return snap.exists() && snap.data().name ? snap.data().name : "名無し";
 }
 
+/* ===== main ===== */
 function init() {
 
-  // 全体チャット送信
+  /* 全体チャット送信 */
   sendBtn.onclick = async () => {
     if (!messageInput.value) return;
+
     await addDoc(collection(db, "messages"), {
       uid: myUid,
       author: await getUserName(myUid),
       text: messageInput.value,
       timestamp: serverTimestamp()
     });
+
     messageInput.value = "";
   };
 
-  // 全体チャット表示
+  /* 全体チャット表示 */
   onSnapshot(
     query(collection(db, "messages"), orderBy("timestamp"), limit(50)),
     snap => {
@@ -91,26 +96,30 @@ function init() {
           <span class="name">${m.author}</span>
           <span class="text">${m.text}</span>
         `;
+
         li.querySelector(".name").onclick = () => openProfile(m.uid);
         chatArea.appendChild(li);
       });
+
       chatArea.scrollTop = chatArea.scrollHeight;
     }
   );
 
-  // 募集欄送信
+  /* 募集欄送信 */
   recruitBtn.onclick = async () => {
     if (!recruitInput.value) return;
+
     await addDoc(collection(db, "recruits"), {
       uid: myUid,
       author: await getUserName(myUid),
       text: recruitInput.value,
       timestamp: serverTimestamp()
     });
+
     recruitInput.value = "";
   };
 
-  // 募集欄表示
+  /* 募集欄表示 */
   onSnapshot(
     query(collection(db, "recruits"), orderBy("timestamp"), limit(20)),
     snap => {
@@ -124,18 +133,20 @@ function init() {
           <span class="name">${r.author}</span>
           <span class="text">${r.text}</span>
         `;
+
         li.querySelector(".name").onclick = () => openProfile(r.uid);
         recruitArea.appendChild(li);
       });
     }
   );
 
-  // 個人チャット一覧
+  /* 個人チャット一覧 */
   onSnapshot(collection(db, "private_rooms"), async snap => {
     privateList.innerHTML = "";
     for (const d of snap.docs) {
       const room = d.data();
       if (!room.members?.includes(myUid)) continue;
+
       const otherUid = room.members.find(u => u !== myUid);
       const li = document.createElement("li");
       li.textContent = await getUserName(otherUid);
@@ -147,9 +158,11 @@ function init() {
   });
 }
 
+/* ===== profile ===== */
 async function openProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return;
+
   const u = snap.data();
   targetUid = uid;
 
@@ -164,6 +177,7 @@ async function openProfile(uid) {
 
 startPrivateBtn.onclick = async () => {
   if (!targetUid) return;
+
   await addDoc(collection(db, "private_rooms"), {
     members: [myUid, targetUid],
     createdAt: serverTimestamp()
