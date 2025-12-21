@@ -9,7 +9,6 @@ import {
   getDoc,
   query,
   orderBy,
-  where,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -27,12 +26,6 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // HTML要素
-const nameInput = document.getElementById("nameInput");
-const passwordInput = document.getElementById("passwordInput");
-const registerBtn = document.getElementById("registerBtn");
-const loginBtn = document.getElementById("loginBtn");
-
-const chatSection = document.getElementById("chatSection");
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
@@ -51,52 +44,15 @@ const startPrivateBtn = document.getElementById("startPrivateBtn");
 
 const privateList = document.getElementById("privateList");
 
-// 状態
-let myUid = localStorage.getItem("myUid") || "";
+// URLから自分のuidを取得
+const myUid = new URLSearchParams(location.search).get("uid");
 let targetUid = "";
 
-// 共通関数
+// 名前取得
 async function getUserName(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? snap.data().name : "名無し";
 }
-
-// -------------------- 登録 --------------------
-registerBtn.onclick = async () => {
-  const name = nameInput.value.trim();
-  const pw = passwordInput.value.trim();
-  if (!name || !pw) return alert("名前とパスワードを入力");
-
-  const docRef = await addDoc(collection(db, "users"), {
-    name,
-    password: pw
-  });
-  myUid = docRef.id;
-  localStorage.setItem("myUid", myUid);
-  alert("登録完了！ログイン状態になりました");
-  chatSection.style.display = "block";
-};
-
-// -------------------- ログイン --------------------
-loginBtn.onclick = async () => {
-  const name = nameInput.value.trim();
-  const pw = passwordInput.value.trim();
-  if (!name || !pw) return alert("名前とパスワードを入力");
-
-  const q = query(collection(db, "users"), where("name", "==", name), where("password", "==", pw));
-  const snap = await getDocs(q);
-
-  if (snap.empty) {
-    alert("ユーザーが見つかりません");
-    return;
-  }
-
-  const docSnap = snap.docs[0];
-  myUid = docSnap.id;
-  localStorage.setItem("myUid", myUid);
-  alert("ログイン成功！");
-  chatSection.style.display = "block";
-};
 
 // -------------------- 全体チャット --------------------
 sendBtn.onclick = async () => {
