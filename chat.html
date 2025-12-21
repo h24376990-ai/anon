@@ -1,30 +1,27 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>チャット</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>全体チャット</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div id="chatSection">
+<h2>全体チャット</h2>
+<div id="chatArea" class="chatBox"></div>
+<input id="messageInput" placeholder="メッセージ">
+<button id="sendBtn">送信</button>
 
-  <h3>全体チャット</h3>
-  <div id="chatArea" style="height:200px; overflow-y:auto; border:1px solid #ccc;"></div>
-  <input id="messageInput" placeholder="メッセージ">
-  <button id="sendBtn">送信</button>
+<h2>募集欄</h2>
+<div id="recruitArea" class="chatBox"></div>
+<input id="recruitInput" placeholder="募集を書こう">
+<button id="recruitBtn">投稿</button>
 
-  <h3>募集欄</h3>
-  <div id="recruitArea" style="height:150px; overflow-y:auto; border:1px solid #ccc;"></div>
-  <input id="recruitInput" placeholder="募集内容">
-  <button id="recruitBtn">投稿</button>
+<h2>個人チャット一覧</h2>
+<div id="privateList"></div>
 
-  <h3>個人チャット一覧</h3>
-  <div id="privateList"></div>
-
-</div>
-
-<div id="profileBox" style="display:none; border:1px solid #ccc; padding:5px;">
+<div id="profileBox" style="display:none;">
+  <h3>プロフィール</h3>
   <p id="pName"></p>
   <p id="pSex"></p>
   <p id="pAge"></p>
