@@ -12,7 +12,6 @@ import {
   limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase 初期化
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
@@ -21,10 +20,10 @@ const firebaseConfig = {
   messagingSenderId: "1035093625910",
   appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// HTML要素
 const chatArea = document.getElementById("chatArea");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
@@ -43,19 +42,15 @@ const startPrivateBtn = document.getElementById("startPrivateBtn");
 
 const privateList = document.getElementById("privateList");
 
-// URLから自分の名前を取得
 const myName = new URLSearchParams(location.search).get("name");
 let targetName = "";
 
-// 名前取得（そのまま）
 async function getUserData(name) {
   const snap = await getDoc(doc(db, "users", name));
   return snap.exists() ? snap.data() : null;
 }
 
-// -------------------- 全体チャット --------------------
-
-// メッセージ送信
+// 全体チャット送信
 sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -73,12 +68,8 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-// メッセージ表示（最新50件・リアルタイム）
-const msgQuery = query(
-  collection(db, "messages"),
-  orderBy("timestamp"),
-  limit(50)
-);
+// 全体チャット表示（最新50件）
+const msgQuery = query(collection(db, "messages"), orderBy("timestamp"), limit(50));
 onSnapshot(msgQuery, snap => {
   chatArea.innerHTML = "";
   snap.forEach(docSnap => {
@@ -95,15 +86,12 @@ onSnapshot(msgQuery, snap => {
     div.append(`：${m.text}`);
 
     if (m.name === myName) div.classList.add("myMessage");
-
     chatArea.appendChild(div);
   });
   chatArea.scrollTop = chatArea.scrollHeight;
 });
 
-// -------------------- 募集欄 --------------------
-
-// 投稿
+// 募集欄送信
 recruitBtn.onclick = async () => {
   const text = recruitInput.value.trim();
   if (!text) return;
@@ -121,7 +109,7 @@ recruitBtn.onclick = async () => {
   recruitInput.value = "";
 };
 
-// 表示
+// 募集欄表示
 const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
 onSnapshot(recruitQuery, snap => {
   recruitArea.innerHTML = "";
@@ -141,13 +129,12 @@ onSnapshot(recruitQuery, snap => {
   });
 });
 
-// -------------------- プロフィール表示 --------------------
+// プロフィール表示
 async function openProfile(name) {
   const u = await getUserData(name);
   if (!u) return;
 
   targetName = name;
-
   pName.textContent = `名前：${u.name}`;
   pSex.textContent = `性別：${u.sex || ""}`;
   pAge.textContent = `年齢：${u.age || ""}`;
@@ -157,7 +144,7 @@ async function openProfile(name) {
   profileBox.style.display = "block";
 }
 
-// -------------------- 個人チャット作成 --------------------
+// 個人チャット作成
 startPrivateBtn.onclick = async () => {
   if (!targetName || targetName === myName) return;
 
@@ -170,19 +157,15 @@ startPrivateBtn.onclick = async () => {
   alert("個人チャット作成（次で画面遷移）");
 };
 
-// -------------------- 個人チャット一覧 --------------------
-const roomQuery = query(
-  collection(db, "private_rooms"),
-  orderBy("createdAt")
-);
-onSnapshot(roomQuery, async snap => {
+// 個人チャット一覧
+const roomQuery = query(collection(db, "private_rooms"), orderBy("createdAt"));
+onSnapshot(roomQuery, snap => {
   privateList.innerHTML = "";
-  for (const docSnap of snap.docs) {
+  snap.docs.forEach(docSnap => {
     const room = docSnap.data();
-    if (!room.members.includes(myName)) continue;
+    if (!room.members.includes(myName)) return;
 
     const otherName = room.members.find(n => n !== myName);
-
     const div = document.createElement("div");
     div.textContent = otherName;
     div.style.color = "blue";
@@ -193,5 +176,5 @@ onSnapshot(roomQuery, async snap => {
     };
 
     privateList.appendChild(div);
-  }
+  });
 });
