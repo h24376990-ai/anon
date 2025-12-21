@@ -16,6 +16,7 @@ button {
   background: #f9f9f9;
   margin-bottom: 10px;
   border-radius: 3px;
+  overflow-y: auto;
 }
 
 #profileBox {
@@ -23,4 +24,9 @@ button {
   margin-top: 10px;
   padding: 5px;
   border-radius: 3px;
+}
+
+/* 自分の発言色用（軽量化・UI整形準備） */
+.myMessage {
+  color: green;
 }
