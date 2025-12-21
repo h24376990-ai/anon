@@ -1,19 +1,43 @@
 body {
   font-family: sans-serif;
+  margin: 20px;
 }
 
-#privateList {
+.chat-list {
   list-style: none;
   padding: 0;
   margin: 0;
 }
 
-#privateList li {
-  padding: 8px 12px;
-  border-bottom: 1px solid #ccc;
+.msg {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  background: #f2f2f2;
+}
+
+.msg.me {
+  background: #d9fdd3;
+}
+
+.author {
+  font-weight: bold;
+  margin-right: 6px;
   cursor: pointer;
 }
 
-#privateList li:hover {
-  background: #f0f0f0;
+.author.recruit {
+  color: blue;
+}
+
+.text {
+  word-break: break-word;
+}
+
+.input-area {
+  margin-top: 6px;
+}
+
+input {
+  width: 70%;
 }
