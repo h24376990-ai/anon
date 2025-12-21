@@ -2,28 +2,78 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>暇チャット</title>
+  <title>ログイン・新規登録</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="container">
-  <h1>暇チャット</h1>
 
-  <!-- 新規登録フォーム -->
-  <h2>新規登録</h2>
-  <input id="regName" placeholder="名前">
-  <input id="regPassword" placeholder="パスワード" type="password">
-  <button id="regBtn">登録</button>
-  <p id="regMessage" style="color:red;"></p>
+<h2>匿名ログイン / 新規登録</h2>
 
-  <!-- ログインフォーム -->
-  <h2>ログイン</h2>
-  <input id="loginName" placeholder="名前">
-  <input id="loginPassword" placeholder="パスワード" type="password">
-  <button id="loginBtn">ログイン</button>
-  <p id="loginMessage" style="color:red;"></p>
-</div>
+<label>名前：<input id="nameInput" placeholder="名前を入力"></label><br>
+<label>性別：<input id="sexInput" placeholder="性別"></label><br>
+<label>年齢：<input id="ageInput" placeholder="年齢"></label><br>
+<label>出身：<input id="locationInput" placeholder="出身"></label><br>
+<label>ひとこと：<input id="bioInput" placeholder="ひとこと"></label><br>
 
-<script type="module" src="index.js"></script>
+<button id="loginBtn">登録＆ログイン</button>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth,
+  signInAnonymously,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  setDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
+  authDomain: "anon-chat-de585.firebaseapp.com",
+  projectId: "anon-chat-de585"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const nameInput = document.getElementById("nameInput");
+const sexInput = document.getElementById("sexInput");
+const ageInput = document.getElementById("ageInput");
+const locationInput = document.getElementById("locationInput");
+const bioInput = document.getElementById("bioInput");
+const loginBtn = document.getElementById("loginBtn");
+
+let myUid = "";
+
+// ボタン押したら匿名ログイン＆プロフィール登録
+loginBtn.onclick = async () => {
+  try {
+    const userCredential = await signInAnonymously(auth);
+    myUid = userCredential.user.uid;
+
+    // Firestore にプロフィール保存
+    await setDoc(doc(db, "users", myUid), {
+      name: nameInput.value || "名無し",
+      sex: sexInput.value || "",
+      age: ageInput.value || "",
+      location: locationInput.value || "",
+      bio: bioInput.value || ""
+    });
+
+    alert("登録完了！ UID: " + myUid);
+
+    // chat.html にリダイレクト
+    location.href = "chat.html";
+
+  } catch (error) {
+    alert("ログイン/登録失敗: " + error.message);
+  }
+};
+</script>
+
 </body>
 </html>
