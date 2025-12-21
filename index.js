@@ -1,10 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Firebase 設定
 const firebaseConfig = {
@@ -16,7 +11,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// HTML
+// HTML要素
 const regName = document.getElementById("regName");
 const regSex = document.getElementById("regSex");
 const regPassword = document.getElementById("regPassword");
@@ -47,11 +42,7 @@ regBtn.onclick = async () => {
     return;
   }
 
-  await setDoc(userDoc, {
-    name,
-    sex,
-    password
-  });
+  await setDoc(userDoc, { name, sex, password });
 
   regMessage.style.color = "green";
   regMessage.textContent = "登録成功！そのままログインしてください";
@@ -86,5 +77,5 @@ loginBtn.onclick = async () => {
   }
 
   // ログイン成功 → chat.html へ
-  location.href = "chat.html";
+  location.href = "chat.html?uid=" + encodeURIComponent(name);
 };
