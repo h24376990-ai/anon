@@ -1,43 +1,27 @@
 body {
   font-family: sans-serif;
-  margin: 20px;
 }
 
-.chat-list {
+ul {
   list-style: none;
   padding: 0;
-  margin: 0;
 }
 
 .msg {
-  padding: 6px 8px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  background: #f2f2f2;
+  padding: 6px 4px;
 }
 
 .msg.me {
   background: #d9fdd3;
 }
 
-.author {
+.name {
+  color: blue;
+  cursor: pointer;
   font-weight: bold;
   margin-right: 6px;
-  cursor: pointer;
-}
-
-.author.recruit {
-  color: blue;
 }
 
 .text {
   word-break: break-word;
-}
-
-.input-area {
-  margin-top: 6px;
-}
-
-input {
-  width: 70%;
 }
