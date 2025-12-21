@@ -47,11 +47,7 @@ regBtn.onclick = async () => {
     return;
   }
 
-  await setDoc(userDoc, {
-    name,
-    sex,
-    password
-  });
+  await setDoc(userDoc, { name, sex, password });
 
   regMessage.style.color = "green";
   regMessage.textContent = "登録成功！そのままログインしてください";
@@ -85,7 +81,6 @@ loginBtn.onclick = async () => {
     return;
   }
 
-  // ログイン成功 → chat.html へ
-  // 名前を URL パラメータで渡す
+  // ログイン成功 → chat.html に名前を渡す
   location.href = `chat.html?name=${encodeURIComponent(name)}`;
 };
