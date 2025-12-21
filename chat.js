@@ -9,7 +9,7 @@ import {
   getDoc,
   query,
   orderBy,
-  getDocs
+  limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 // Firebase 初期化
@@ -21,7 +21,6 @@ const firebaseConfig = {
   messagingSenderId: "1035093625910",
   appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -55,6 +54,8 @@ async function getUserName(uid) {
 }
 
 // -------------------- 全体チャット --------------------
+
+// メッセージ送信
 sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   if (!text) return;
@@ -71,7 +72,12 @@ sendBtn.onclick = async () => {
   messageInput.value = "";
 };
 
-const msgQuery = query(collection(db, "messages"), orderBy("timestamp"));
+// メッセージ表示（最新50件・リアルタイム）
+const msgQuery = query(
+  collection(db, "messages"),
+  orderBy("timestamp"),
+  limit(50)
+);
 onSnapshot(msgQuery, snap => {
   chatArea.innerHTML = "";
   snap.forEach(docSnap => {
@@ -86,12 +92,17 @@ onSnapshot(msgQuery, snap => {
 
     div.appendChild(nameSpan);
     div.append(`：${m.text}`);
+
+    if (m.uid === myUid) div.classList.add("myMessage");
+
     chatArea.appendChild(div);
   });
   chatArea.scrollTop = chatArea.scrollHeight;
 });
 
 // -------------------- 募集欄 --------------------
+
+// 投稿
 recruitBtn.onclick = async () => {
   const text = recruitInput.value.trim();
   if (!text) return;
@@ -108,6 +119,7 @@ recruitBtn.onclick = async () => {
   recruitInput.value = "";
 };
 
+// 表示
 const recruitQuery = query(collection(db, "recruits"), orderBy("timestamp"));
 onSnapshot(recruitQuery, snap => {
   recruitArea.innerHTML = "";
@@ -127,7 +139,7 @@ onSnapshot(recruitQuery, snap => {
   });
 });
 
-// -------------------- プロフィール --------------------
+// -------------------- プロフィール表示 --------------------
 async function openProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return;
