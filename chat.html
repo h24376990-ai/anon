@@ -2,33 +2,41 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Chat</title>
+  <title>チャット</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h2>全体チャット</h2>
-<ul id="chatArea" class="chat-list"></ul>
+<h2>ログイン / 登録</h2>
+<input id="nameInput" placeholder="名前">
+<input id="passwordInput" type="password" placeholder="パスワード">
+<button id="registerBtn">登録</button>
+<button id="loginBtn">ログイン</button>
 
-<input id="messageInput" placeholder="メッセージ">
-<button id="sendBtn">送信</button>
+<hr>
 
-<h2>募集欄</h2>
-<ul id="recruitArea" class="chat-list"></ul>
+<div id="chatSection" style="display:none;">
+  <h3>全体チャット</h3>
+  <div id="chatArea" style="height:200px; overflow-y:auto; border:1px solid #ccc;"></div>
+  <input id="messageInput" placeholder="メッセージ">
+  <button id="sendBtn">送信</button>
 
-<input id="recruitInput" placeholder="募集内容">
-<button id="recruitBtn">投稿</button>
+  <h3>募集欄</h3>
+  <div id="recruitArea" style="height:150px; overflow-y:auto; border:1px solid #ccc;"></div>
+  <input id="recruitInput" placeholder="募集内容">
+  <button id="recruitBtn">投稿</button>
 
-<h2>個人チャット一覧</h2>
-<ul id="privateList"></ul>
+  <h3>個人チャット一覧</h3>
+  <div id="privateList"></div>
+</div>
 
-<div id="profileBox" style="display:none;">
+<div id="profileBox" style="display:none; border:1px solid #ccc; padding:5px;">
   <p id="pName"></p>
   <p id="pSex"></p>
   <p id="pAge"></p>
   <p id="pLocation"></p>
   <p id="pBio"></p>
-  <button id="startPrivateBtn">個人チャット開始</button>
+  <button id="startPrivateBtn">個人チャット作成</button>
 </div>
 
 <script type="module" src="chat.js"></script>
