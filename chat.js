@@ -43,14 +43,14 @@ const startPrivateBtn = document.getElementById("startPrivateBtn");
 
 const privateList = document.getElementById("privateList");
 
-// URLから自分のuidを取得
-const myUid = new URLSearchParams(location.search).get("uid");
-let targetUid = "";
+// URLから自分の名前を取得
+const myName = new URLSearchParams(location.search).get("name");
+let targetName = "";
 
-// 名前取得
-async function getUserName(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? snap.data().name : "名無し";
+// 名前取得（そのまま）
+async function getUserData(name) {
+  const snap = await getDoc(doc(db, "users", name));
+  return snap.exists() ? snap.data() : null;
 }
 
 // -------------------- 全体チャット --------------------
@@ -60,10 +60,11 @@ sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   if (!text) return;
 
-  const author = await getUserName(myUid);
+  const userData = await getUserData(myName);
+  const author = userData ? userData.name : "名無し";
 
   await addDoc(collection(db, "messages"), {
-    uid: myUid,
+    name: myName,
     author,
     text,
     timestamp: serverTimestamp()
@@ -88,12 +89,12 @@ onSnapshot(msgQuery, snap => {
     nameSpan.textContent = m.author;
     nameSpan.style.color = "blue";
     nameSpan.style.cursor = "pointer";
-    nameSpan.onclick = () => openProfile(m.uid);
+    nameSpan.onclick = () => openProfile(m.name);
 
     div.appendChild(nameSpan);
     div.append(`：${m.text}`);
 
-    if (m.uid === myUid) div.classList.add("myMessage");
+    if (m.name === myName) div.classList.add("myMessage");
 
     chatArea.appendChild(div);
   });
@@ -107,10 +108,11 @@ recruitBtn.onclick = async () => {
   const text = recruitInput.value.trim();
   if (!text) return;
 
-  const author = await getUserName(myUid);
+  const userData = await getUserData(myName);
+  const author = userData ? userData.name : "名無し";
 
   await addDoc(collection(db, "recruits"), {
-    uid: myUid,
+    name: myName,
     author,
     text,
     timestamp: serverTimestamp()
@@ -131,7 +133,7 @@ onSnapshot(recruitQuery, snap => {
     nameSpan.textContent = r.author;
     nameSpan.style.color = "blue";
     nameSpan.style.cursor = "pointer";
-    nameSpan.onclick = () => openProfile(r.uid);
+    nameSpan.onclick = () => openProfile(r.name);
 
     div.appendChild(nameSpan);
     div.append(`：${r.text}`);
@@ -140,12 +142,11 @@ onSnapshot(recruitQuery, snap => {
 });
 
 // -------------------- プロフィール表示 --------------------
-async function openProfile(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
-  if (!snap.exists()) return;
+async function openProfile(name) {
+  const u = await getUserData(name);
+  if (!u) return;
 
-  const u = snap.data();
-  targetUid = uid;
+  targetName = name;
 
   pName.textContent = `名前：${u.name}`;
   pSex.textContent = `性別：${u.sex || ""}`;
@@ -158,10 +159,11 @@ async function openProfile(uid) {
 
 // -------------------- 個人チャット作成 --------------------
 startPrivateBtn.onclick = async () => {
-  if (!targetUid || targetUid === myUid) return;
+  if (!targetName || targetName === myName) return;
 
+  const members = [myName, targetName].sort();
   await addDoc(collection(db, "private_rooms"), {
-    members: [myUid, targetUid],
+    members,
     createdAt: serverTimestamp()
   });
 
@@ -173,15 +175,13 @@ const roomQuery = query(
   collection(db, "private_rooms"),
   orderBy("createdAt")
 );
-
 onSnapshot(roomQuery, async snap => {
   privateList.innerHTML = "";
   for (const docSnap of snap.docs) {
     const room = docSnap.data();
-    if (!room.members.includes(myUid)) continue;
+    if (!room.members.includes(myName)) continue;
 
-    const otherUid = room.members.find(uid => uid !== myUid);
-    const otherName = await getUserName(otherUid);
+    const otherName = room.members.find(n => n !== myName);
 
     const div = document.createElement("div");
     div.textContent = otherName;
@@ -189,7 +189,7 @@ onSnapshot(roomQuery, async snap => {
     div.style.cursor = "pointer";
 
     div.onclick = () => {
-      location.href = `private.html?roomId=${docSnap.id}&uid=${myUid}`;
+      location.href = `private.html?roomId=${docSnap.id}&name=${myName}`;
     };
 
     privateList.appendChild(div);
