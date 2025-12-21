@@ -1,7 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
   getFirestore,
-  collection,
   doc,
   getDoc,
   setDoc
@@ -17,8 +16,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// HTML 要素
+// HTML
 const regName = document.getElementById("regName");
+const regSex = document.getElementById("regSex");
 const regPassword = document.getElementById("regPassword");
 const regBtn = document.getElementById("regBtn");
 const regMessage = document.getElementById("regMessage");
@@ -31,10 +31,11 @@ const loginMessage = document.getElementById("loginMessage");
 // 🔹 新規登録
 regBtn.onclick = async () => {
   const name = regName.value.trim();
+  const sex = regSex.value.trim();
   const password = regPassword.value;
 
   if (!name || !password) {
-    regMessage.textContent = "名前とパスワードを入力してください";
+    regMessage.textContent = "名前とパスワードは必須です";
     return;
   }
 
@@ -48,17 +49,15 @@ regBtn.onclick = async () => {
 
   await setDoc(userDoc, {
     name,
-    password,
-    age: "",
-    sex: "",
-    location: "",
-    bio: "",
-    createdAt: new Date()
+    sex,
+    password
   });
 
   regMessage.style.color = "green";
   regMessage.textContent = "登録成功！そのままログインしてください";
+
   regName.value = "";
+  regSex.value = "";
   regPassword.value = "";
 };
 
@@ -87,6 +86,5 @@ loginBtn.onclick = async () => {
   }
 
   // ログイン成功 → chat.html へ
-  alert("ログイン成功: " + name);
   location.href = "chat.html";
 };
