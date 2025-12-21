@@ -17,6 +17,7 @@ import {
   limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// 🔹 Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
@@ -27,7 +28,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// HTML
+// 🔹 HTML 要素
 const chatArea = document.getElementById("chatArea");
 const recruitArea = document.getElementById("recruitArea");
 const privateList = document.getElementById("privateList");
@@ -47,23 +48,32 @@ const startPrivateBtn = document.getElementById("startPrivateBtn");
 let myUid = "";
 let targetUid = "";
 
-// Auth
-signInAnonymously(auth);
+// 🔹 匿名ログイン
+signInAnonymously(auth)
+  .then(() => {
+    console.log("匿名ログイン要求送信完了");
+  })
+  .catch((error) => {
+    alert("匿名ログイン失敗: " + error.message);
+  });
 
+// 🔹 認証状態監視
 onAuthStateChanged(auth, user => {
   if (user) {
     myUid = user.uid;
-    // 🔹 iPad UID確認用アラート
+    // 🔹 UID確認用
     alert("ログインUID: " + myUid);
     init();
   }
 });
 
+// 🔹 ユーザー名取得
 async function getUserName(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? snap.data().name : "名無し";
 }
 
+// 🔹 初期化
 function init() {
 
   // 全体チャット送信
@@ -149,6 +159,7 @@ function init() {
   });
 }
 
+// 🔹 プロフィール表示
 async function openProfile(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   if (!snap.exists()) return;
@@ -164,6 +175,7 @@ async function openProfile(uid) {
   profileBox.style.display = "block";
 }
 
+// 🔹 個人チャット作成
 startPrivateBtn.onclick = async () => {
   if (!targetUid) return;
   await addDoc(collection(db, "private_rooms"), {
