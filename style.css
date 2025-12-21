@@ -1,27 +1,26 @@
 body {
-  font-family: sans-serif;
+  font-family: Arial, sans-serif;
+  padding: 10px;
 }
 
-ul {
-  list-style: none;
-  padding: 0;
+input {
+  margin: 5px 0;
 }
 
-.msg {
-  padding: 6px 4px;
+button {
+  margin: 5px 0;
 }
 
-.msg.me {
-  background: #d9fdd3;
+#chatArea, #recruitArea, #privateList {
+  padding: 5px;
+  background: #f9f9f9;
+  margin-bottom: 10px;
+  border-radius: 3px;
 }
 
-.name {
-  color: blue;
-  cursor: pointer;
-  font-weight: bold;
-  margin-right: 6px;
-}
-
-.text {
-  word-break: break-word;
+#profileBox {
+  background: #eef;
+  margin-top: 10px;
+  padding: 5px;
+  border-radius: 3px;
 }
