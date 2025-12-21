@@ -1,19 +1,23 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  setDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// Firebase 設定
 const firebaseConfig = {
   apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
   authDomain: "anon-chat-de585.firebaseapp.com",
-  projectId: "anon-chat-de585",
-  storageBucket: "anon-chat-de585.firebasestorage.app",
-  messagingSenderId: "1035093625910",
-  appId: "1:1035093625910:web:65ba2370a79f73e23b9c97"
+  projectId: "anon-chat-de585"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* ====== HTML要素 ====== */
+// HTML 要素
 const regName = document.getElementById("regName");
 const regPassword = document.getElementById("regPassword");
 const regBtn = document.getElementById("regBtn");
@@ -24,65 +28,65 @@ const loginPassword = document.getElementById("loginPassword");
 const loginBtn = document.getElementById("loginBtn");
 const loginMessage = document.getElementById("loginMessage");
 
-/* ====== 新規登録処理 ====== */
+// 🔹 新規登録
 regBtn.onclick = async () => {
   const name = regName.value.trim();
-  const password = regPassword.value.trim();
+  const password = regPassword.value;
 
   if (!name || !password) {
     regMessage.textContent = "名前とパスワードを入力してください";
     return;
   }
 
-  // 同じ名前がないか確認
-  const q = query(collection(db, "users"), where("name", "==", name));
-  const snap = await getDocs(q);
-  if (!snap.empty) {
-    regMessage.textContent = "その名前はすでに使われています";
+  const userDoc = doc(db, "users", name);
+  const snap = await getDoc(userDoc);
+
+  if (snap.exists()) {
+    regMessage.textContent = "その名前はすでに登録されています";
     return;
   }
 
-  // Firestore にユーザー作成
-  await addDoc(collection(db, "users"), {
+  await setDoc(userDoc, {
     name,
     password,
     age: "",
+    sex: "",
     location: "",
     bio: "",
     createdAt: new Date()
   });
 
   regMessage.style.color = "green";
-  regMessage.textContent = "登録完了！ログインしてください";
+  regMessage.textContent = "登録成功！そのままログインしてください";
   regName.value = "";
   regPassword.value = "";
 };
 
-/* ====== ログイン処理 ====== */
+// 🔹 ログイン
 loginBtn.onclick = async () => {
   const name = loginName.value.trim();
-  const password = loginPassword.value.trim();
+  const password = loginPassword.value;
 
   if (!name || !password) {
     loginMessage.textContent = "名前とパスワードを入力してください";
     return;
   }
 
-  // ユーザー検索
-  const q = query(collection(db, "users"),
-                  where("name", "==", name),
-                  where("password", "==", password));
-  const snap = await getDocs(q);
+  const userDoc = doc(db, "users", name);
+  const snap = await getDoc(userDoc);
 
-  if (snap.empty) {
-    loginMessage.textContent = "ログインに失敗しました";
+  if (!snap.exists()) {
+    loginMessage.textContent = "その名前は存在しません";
     return;
   }
 
-  // ログイン成功
-  const docData = snap.docs[0].data();
-  const uid = snap.docs[0].id;
+  const data = snap.data();
+  if (data.password !== password) {
+    loginMessage.textContent = "パスワードが違います";
+    return;
+  }
 
-  // chat.html に遷移
-  location.href = `chat.html?uid=${uid}`;
+  // ログイン成功 → chat.html へ
+  alert("ログイン成功: " + name);
+  location.href = "chat.html";
 };
