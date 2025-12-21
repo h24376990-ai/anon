@@ -2,29 +2,33 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>匿名チャット</title>
+  <title>Chat</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <h2>全体チャット</h2>
+<ul id="chatArea" class="chat-list"></ul>
 
-<ul id="messageList" class="chat-list"></ul>
-
-<div class="input-area">
-  <input type="text" id="messageInput" placeholder="メッセージを入力">
-  <button id="sendBtn">送信</button>
-</div>
-
-<hr>
+<input id="messageInput" placeholder="メッセージ">
+<button id="sendBtn">送信</button>
 
 <h2>募集欄</h2>
+<ul id="recruitArea" class="chat-list"></ul>
 
-<ul id="recruitList" class="chat-list"></ul>
+<input id="recruitInput" placeholder="募集内容">
+<button id="recruitBtn">投稿</button>
 
-<div class="input-area">
-  <input type="text" id="recruitInput" placeholder="募集内容を入力">
-  <button id="recruitBtn">投稿</button>
+<h2>個人チャット一覧</h2>
+<ul id="privateList"></ul>
+
+<div id="profileBox" style="display:none;">
+  <p id="pName"></p>
+  <p id="pSex"></p>
+  <p id="pAge"></p>
+  <p id="pLocation"></p>
+  <p id="pBio"></p>
+  <button id="startPrivateBtn">個人チャット開始</button>
 </div>
 
 <script type="module" src="chat.js"></script>
