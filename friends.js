@@ -1,37 +1,56 @@
-import { auth, db } from "./firebase.js";
+import { db } from "./firebase.js";
 
 import {
 collection,
 query,
 where,
-getDocs
+getDocs,
+addDoc,
+deleteDoc,
+doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const div = document.getElementById("friends");
+const uid=localStorage.getItem("uid");
 
-async function loadFriends(){
+async function load(){
 
-const q = query(
-collection(db,"friends"),
-where("users","array-contains",auth.currentUser.uid)
+const q=query(
+collection(db,"friend_requests"),
+where("to","==",uid)
 );
 
-const snapshot = await getDocs(q);
+const snap=await getDocs(q);
 
-snapshot.forEach(doc=>{
+snap.forEach(d=>{
 
-const data = doc.data();
+const data=d.data();
 
-const el = document.createElement("div");
+const div=document.createElement("div");
 
-el.className="message";
+div.innerHTML=`
+申請:${data.from}
 
-el.textContent = data.users.join(" / ");
+<button onclick="accept('${d.id}','${data.from}')">承認</button>
+`;
 
-div.appendChild(el);
+document.body.appendChild(div);
 
 });
 
 }
 
-loadFriends();
+load();
+
+window.accept=async function(id,user){
+
+await addDoc(collection(db,"friends"),{
+
+users:[uid,user]
+
+});
+
+await deleteDoc(doc(db,"friend_requests",id));
+
+alert("フレンド追加");
+
+}
