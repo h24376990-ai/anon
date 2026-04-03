@@ -2,32 +2,90 @@ import { db } from "./firebase.js";
 
 import {
 collection,
-getDocs
+getDocs,
+addDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const usersDiv = document.getElementById("users");
+const div=document.getElementById("users");
 
-async function loadUsers(){
+async function load(){
 
-const snapshot = await getDocs(collection(db,"users"));
+const snap=await getDocs(collection(db,"users"));
 
-snapshot.forEach(doc=>{
+snap.forEach(doc=>{
 
-const data = doc.data();
+const data=doc.data();
 
-const div = document.createElement("div");
+if(doc.id===localStorage.getItem("uid")) return;
 
-div.className="message";
+const el=document.createElement("div");
 
-div.innerHTML = `
-<b>${data.name}</b><br>
-${data.age} / ${data.sex}
+el.className="message";
+
+el.innerHTML=`
+${data.name}
+
+<button onclick="friend('${doc.id}')">フレンド</button>
+<button onclick="dm('${doc.id}')">DM</button>
+<button onclick="block('${doc.id}')">ブロック</button>
+<button onclick="report('${doc.id}')">通報</button>
 `;
 
-usersDiv.appendChild(div);
+div.appendChild(el);
 
 });
 
 }
 
-loadUsers();
+load();
+
+window.friend=async function(uid){
+
+await addDoc(collection(db,"friend_requests"),{
+
+from:localStorage.getItem("uid"),
+to:uid
+
+});
+
+alert("申請しました");
+
+}
+
+window.dm=async function(uid){
+
+await addDoc(collection(db,"dm_rooms"),{
+
+members:[localStorage.getItem("uid"),uid]
+
+});
+
+alert("DM作成");
+
+}
+
+window.block=async function(uid){
+
+await addDoc(collection(db,"blocks"),{
+
+from:localStorage.getItem("uid"),
+to:uid
+
+});
+
+alert("ブロック");
+
+}
+
+window.report=async function(uid){
+
+await addDoc(collection(db,"reports"),{
+
+reporter:localStorage.getItem("uid"),
+target:uid
+
+});
+
+alert("通報");
+
+}
