@@ -1,35 +1,34 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
+
 <head>
-<meta charset="UTF-8">
-<title>全体チャット</title>
+<title>Chat</title>
 <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-<h2>全体チャット</h2>
-<div id="chatArea" class="chatBox"></div>
-<input id="messageInput" placeholder="メッセージ">
-<button id="sendBtn">送信</button>
+<header>
 
-<h2>募集欄</h2>
-<div id="recruitArea" class="chatBox"></div>
-<input id="recruitInput" placeholder="募集を書こう">
-<button id="recruitBtn">投稿</button>
+<a href="chat.html">Home</a>
+<a href="users.html">Users</a>
+<a href="friends.html">Friends</a>
+<a href="dm.html">DM</a>
+<a href="profile.html">Profile</a>
 
-<h2>個人チャット一覧</h2>
-<div id="privateList"></div>
+</header>
 
-<div id="profileBox" style="display:none;">
-  <h3>プロフィール</h3>
-  <p id="pName"></p>
-  <p id="pSex"></p>
-  <p id="pAge"></p>
-  <p id="pLocation"></p>
-  <p id="pBio"></p>
-  <button id="startPrivateBtn">個人チャット作成</button>
+<div class="chat-box" id="chat"></div>
+
+<div class="input-area">
+
+<input id="msg">
+
+<button onclick="send()">送信</button>
+
 </div>
 
 <script type="module" src="chat.js"></script>
+
 </body>
 </html>
