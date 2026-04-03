@@ -8,31 +8,31 @@ orderBy,
 onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const params = new URLSearchParams(location.search);
-const room = params.get("room");
+const params=new URLSearchParams(location.search);
+const room=params.get("room");
 
-const chat = document.getElementById("chat");
+const chat=document.getElementById("chat");
 
-const q = query(
+const q=query(
 collection(db,"dm_messages"),
 orderBy("time")
 );
 
-onSnapshot(q,(snapshot)=>{
+onSnapshot(q,(snap)=>{
 
 chat.innerHTML="";
 
-snapshot.forEach(doc=>{
+snap.forEach(doc=>{
 
-const data = doc.data();
+const data=doc.data();
 
 if(data.room!==room) return;
 
-const div = document.createElement("div");
+const div=document.createElement("div");
 
 div.className="message";
 
-div.textContent = data.text;
+div.textContent=data.name+" : "+data.text;
 
 chat.appendChild(div);
 
@@ -40,14 +40,15 @@ chat.appendChild(div);
 
 });
 
-window.send = async function(){
+window.send=async function(){
 
-const text = document.getElementById("msg").value;
+const text=document.getElementById("msg").value;
 
 await addDoc(collection(db,"dm_messages"),{
 
-room,
-text,
+room:room,
+text:text,
+name:localStorage.getItem("name"),
 time:Date.now()
 
 });
