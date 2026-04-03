@@ -1,23 +1,31 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>プロフィール - 暇チャット</title>
-  <link rel="stylesheet" href="style.css">
+<title>Profile</title>
+<link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <div class="container">
-    <h1>プロフィール</h1>
-    <input type="text" id="profileName" placeholder="名前">
-    <input type="text" id="profileAge" placeholder="年齢">
-    <input type="text" id="profileLocation" placeholder="出身">
-    <input type="text" id="profileBio" placeholder="ひとこと">
-    <button id="saveProfileBtn">保存</button>
-    <p id="profileMessage"></p>
-    <button id="goChatBtn">チャットを開始</button>
-  </div>
 
-  <script type="module" src="profile.js"></script>
+<body>
+
+<header>
+<a href="chat.html">Home</a>
+<a href="users.html">Users</a>
+<a href="friends.html">Friends</a>
+<a href="dm.html">DM</a>
+<a href="profile.html">Profile</a>
+</header>
+
+<h2>プロフィール</h2>
+
+<input id="name" placeholder="名前">
+<input id="age" placeholder="年齢">
+<input id="sex" placeholder="性別">
+
+<textarea id="bio" placeholder="自己紹介"></textarea>
+
+<button onclick="save()">保存</button>
+
+<script type="module" src="profile.js"></script>
+
 </body>
 </html>
