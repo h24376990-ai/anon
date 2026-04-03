@@ -1,53 +1,52 @@
-body {
-  font-family: Arial, sans-serif;
-  padding: 10px;
-  background: #e6f2ff;
+body{
+font-family:sans-serif;
+margin:0;
+background:#f2f2f2;
 }
 
-h2 {
-  margin-top: 20px;
+header{
+background:#4a6cff;
+padding:10px;
+display:flex;
+gap:15px;
 }
 
-input {
-  margin: 5px 0;
-  padding: 5px;
+header a{
+color:white;
+text-decoration:none;
+font-weight:bold;
 }
 
-button {
-  margin: 5px 0;
-  padding: 6px 10px;
-  cursor: pointer;
+.chat-box{
+height:400px;
+overflow-y:scroll;
+background:white;
+margin:10px;
+padding:10px;
+border-radius:10px;
 }
 
-/* チャット欄 */
-#chatArea, #recruitArea, #privateList {
-  padding: 10px;
-  background: white;
-  margin-bottom: 10px;
-  border-radius: 10px;
-  overflow-y: auto;
-  max-height: 300px;
-  box-shadow: 0 0 5px rgba(0,0,0,0.1);
+.message{
+background:#e8f0ff;
+padding:8px;
+margin:5px 0;
+border-radius:8px;
 }
 
-/* メッセージ */
-.message {
-  background: #f2f2f2;
-  padding: 6px 10px;
-  margin: 5px 0;
-  border-radius: 10px;
-  max-width: 80%;
+.input-area{
+display:flex;
+margin:10px;
 }
 
-/* 自分のメッセージ */
-.myMessage {
-  background: #d1ffd1;
+input{
+flex:1;
+padding:10px;
 }
 
-/* プロフィール */
-#profileBox {
-  background: #eef;
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 10px;
+button{
+padding:10px;
+background:#4a6cff;
+color:white;
+border:none;
+cursor:pointer;
 }
