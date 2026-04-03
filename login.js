@@ -1,28 +1,23 @@
-import { auth } from "./firebase.js";
-
+import { db } from "./firebase.js";
 import {
-signInWithEmailAndPassword,
-createUserWithEmailAndPassword
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+collection,
+addDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-window.login = async function(){
+window.enter = async function(){
 
-const email = document.getElementById("email").value;
-const password = document.getElementById("password").value;
+const name=document.getElementById("name").value;
 
-await signInWithEmailAndPassword(auth,email,password);
+const doc=await addDoc(collection(db,"users"),{
+
+name:name,
+time:Date.now()
+
+});
+
+localStorage.setItem("uid",doc.id);
+localStorage.setItem("name",name);
 
 location.href="chat.html";
-
-}
-
-window.register = async function(){
-
-const email = document.getElementById("email").value;
-const password = document.getElementById("password").value;
-
-await createUserWithEmailAndPassword(auth,email,password);
-
-alert("登録成功");
 
 }
