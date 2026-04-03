@@ -1,32 +1,53 @@
 body {
   font-family: Arial, sans-serif;
   padding: 10px;
+  background: #e6f2ff;
+}
+
+h2 {
+  margin-top: 20px;
 }
 
 input {
   margin: 5px 0;
+  padding: 5px;
 }
 
 button {
   margin: 5px 0;
+  padding: 6px 10px;
+  cursor: pointer;
 }
 
+/* チャット欄 */
 #chatArea, #recruitArea, #privateList {
-  padding: 5px;
-  background: #f9f9f9;
+  padding: 10px;
+  background: white;
   margin-bottom: 10px;
-  border-radius: 3px;
+  border-radius: 10px;
   overflow-y: auto;
+  max-height: 300px;
+  box-shadow: 0 0 5px rgba(0,0,0,0.1);
 }
 
+/* メッセージ */
+.message {
+  background: #f2f2f2;
+  padding: 6px 10px;
+  margin: 5px 0;
+  border-radius: 10px;
+  max-width: 80%;
+}
+
+/* 自分のメッセージ */
+.myMessage {
+  background: #d1ffd1;
+}
+
+/* プロフィール */
 #profileBox {
   background: #eef;
   margin-top: 10px;
-  padding: 5px;
-  border-radius: 3px;
-}
-
-/* 自分の発言色用（軽量化・UI整形準備） */
-.myMessage {
-  color: green;
+  padding: 10px;
+  border-radius: 10px;
 }
