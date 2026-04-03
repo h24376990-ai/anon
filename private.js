@@ -1,77 +1,55 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { db } from "./firebase.js";
+
 import {
-  getFirestore,
-  collection,
-  addDoc,
-  onSnapshot,
-  serverTimestamp,
-  doc,
-  getDoc,
-  query,
-  orderBy
+collection,
+addDoc,
+query,
+orderBy,
+onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyA0R2KYt2MgJHaiYQ9oM8IMXhX9oj-Ky_c",
-  authDomain: "anon-chat-de585.firebaseapp.com",
-  projectId: "anon-chat-de585",
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
-// HTML
-const chatArea = document.getElementById("privateChatArea");
-const input = document.getElementById("privateMessageInput");
-const sendBtn = document.getElementById("privateSendBtn");
-
-// URL
 const params = new URLSearchParams(location.search);
-const roomId = params.get("roomId");
-const myUid = params.get("uid");
+const room = params.get("room");
 
-// 名前取得
-async function getUserName(uid) {
-  const snap = await getDoc(doc(db, "users", uid));
-  return snap.exists() ? snap.data().name : "名無し";
-}
+const chat = document.getElementById("chat");
 
-// 送信
-sendBtn.onclick = async () => {
-  const text = input.value.trim();
-  if (!text) return;
-
-  const author = await getUserName(myUid);
-
-  await addDoc(
-    collection(db, "private_rooms", roomId, "messages"),
-    {
-      uid: myUid,
-      author,
-      text,
-      timestamp: serverTimestamp()
-    }
-  );
-
-  input.value = "";
-};
-
-// 表示
-const msgQuery = query(
-  collection(db, "private_rooms", roomId, "messages"),
-  orderBy("timestamp")
+const q = query(
+collection(db,"dm_messages"),
+orderBy("time")
 );
 
-onSnapshot(msgQuery, snap => {
-  chatArea.innerHTML = "";
+onSnapshot(q,(snapshot)=>{
 
-  snap.forEach(docSnap => {
-    const m = docSnap.data();
-    const div = document.createElement("div");
-    div.textContent = `${m.author}：${m.text}`;
-    chatArea.appendChild(div);
-  });
+chat.innerHTML="";
 
-  chatArea.scrollTop = chatArea.scrollHeight;
+snapshot.forEach(doc=>{
+
+const data = doc.data();
+
+if(data.room!==room) return;
+
+const div = document.createElement("div");
+
+div.className="message";
+
+div.textContent = data.text;
+
+chat.appendChild(div);
+
 });
+
+});
+
+window.send = async function(){
+
+const text = document.getElementById("msg").value;
+
+await addDoc(collection(db,"dm_messages"),{
+
+room,
+text,
+time:Date.now()
+
+});
+
+}
