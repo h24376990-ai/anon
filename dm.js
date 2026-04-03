@@ -1,4 +1,4 @@
-import { db, auth } from "./firebase.js";
+import { db } from "./firebase.js";
 
 import {
 collection,
@@ -7,33 +7,31 @@ where,
 getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const roomsDiv = document.getElementById("rooms");
+const uid=localStorage.getItem("uid");
 
-async function loadRooms(){
+async function load(){
 
-const q = query(
+const q=query(
 collection(db,"dm_rooms"),
-where("members","array-contains",auth.currentUser.uid)
+where("members","array-contains",uid)
 );
 
-const snapshot = await getDocs(q);
+const snap=await getDocs(q);
 
-snapshot.forEach(doc=>{
+snap.forEach(doc=>{
 
-const div = document.createElement("div");
+const div=document.createElement("div");
 
-div.className="message";
-
-div.innerHTML = `
+div.innerHTML=`
 <a href="private.html?room=${doc.id}">
 DMルーム
 </a>
 `;
 
-roomsDiv.appendChild(div);
+document.body.appendChild(div);
 
 });
 
 }
 
-loadRooms();
+load();
