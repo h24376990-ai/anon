@@ -1,0 +1,179 @@
+/* ------------------------
+   全体
+------------------------ */
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:"Yu Gothic","Meiryo",sans-serif;
+}
+
+body{
+    background:#eef7ff;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+}
+
+/* ------------------------
+   スマホ本体
+------------------------ */
+
+.phone{
+    width:100%;
+    max-width:420px;
+}
+
+/* ------------------------
+   ロゴ
+------------------------ */
+
+.logo{
+    text-align:center;
+    margin-bottom:30px;
+}
+
+.logo h1{
+    color:#36a8ff;
+    font-size:38px;
+    font-weight:bold;
+}
+
+.logo p{
+    color:#6b7280;
+    margin-top:8px;
+}
+
+/* ------------------------
+   カード
+------------------------ */
+
+.card{
+    background:white;
+    border-radius:24px;
+    padding:30px;
+    box-shadow:0 10px 25px rgba(0,0,0,.08);
+}
+
+/* ------------------------
+   タブ
+------------------------ */
+
+.tabs{
+    display:flex;
+    margin-bottom:25px;
+    background:#f2f7fb;
+    border-radius:50px;
+    padding:5px;
+}
+
+.tabs button{
+    flex:1;
+    border:none;
+    background:none;
+    padding:12px;
+    border-radius:50px;
+    cursor:pointer;
+    font-size:15px;
+    transition:.3s;
+}
+
+.tabs button.active{
+    background:#39b7ff;
+    color:white;
+    font-weight:bold;
+}
+
+/* ------------------------
+   入力欄
+------------------------ */
+
+input{
+    width:100%;
+    margin-bottom:15px;
+    padding:15px;
+    border:2px solid #d9eaf7;
+    border-radius:15px;
+    outline:none;
+    font-size:15px;
+    transition:.2s;
+}
+
+input:focus{
+    border-color:#39b7ff;
+}
+
+/* ------------------------
+   ボタン
+------------------------ */
+
+.mainButton{
+    width:100%;
+    padding:15px;
+    border:none;
+    border-radius:15px;
+    background:#39b7ff;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.mainButton:hover{
+    background:#1fa6f8;
+}
+
+.mainButton:active{
+    transform:scale(.98);
+}
+
+/* ------------------------
+   非表示
+------------------------ */
+
+.hidden{
+    display:none;
+}
+
+/* ------------------------
+   フェード
+------------------------ */
+
+#loginPage,
+#registerPage{
+    animation:fade .3s;
+}
+
+@keyframes fade{
+
+    from{
+        opacity:0;
+        transform:translateY(8px);
+    }
+
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+
+}
+
+/* ------------------------
+   スマホ
+------------------------ */
+
+@media(max-width:480px){
+
+.card{
+    padding:22px;
+}
+
+.logo h1{
+    font-size:32px;
+}
+
+}
