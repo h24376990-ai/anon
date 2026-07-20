@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>通知 | つながりチャット</title>
+
+<link rel="stylesheet" href="notifications.css">
+
+</head>
+
+<body>
+
+<header>
+
+<h2>通知</h2>
+
+<button id="readAll">
+既読
+</button>
+
+</header>
+
+<div id="notificationList">
+
+<div class="notification unread">
+
+<div class="icon">❤️</div>
+
+<div class="info">
+
+<h3>もか さん</h3>
+
+<p>あなたの投稿にいいねしました</p>
+
+<small>5分前</small>
+
+</div>
+
+</div>
+
+<div class="notification unread">
+
+<div class="icon">👥</div>
+
+<div class="info">
+
+<h3>あや さん</h3>
+
+<p>フレンド申請を送りました</p>
+
+<small>20分前</small>
+
+</div>
+
+</div>
+
+<div class="notification">
+
+<div class="icon">💬</div>
+
+<div class="info">
+
+<h3>ゲーム好き</h3>
+
+<p>新しいメッセージがあります</p>
+
+<small>昨日</small>
+
+</div>
+
+</div>
+
+</div>
+
+<nav>
+
+<button onclick="location.href='home.html'">🏠</button>
+
+<button onclick="location.href='friends.html'">👥</button>
+
+<button onclick="location.href='chat.html'">💬</button>
+
+<button class="active">🔔</button>
+
+<button onclick="location.href='profile.html'">👤</button>
+
+</nav>
+
+<script src="notifications.js"></script>
+
+</body>
+
+</html>
