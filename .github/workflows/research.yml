@@ -3,11 +3,47 @@ name: Math Research Lab
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    name: Research Lab Test
+    name: Supabase Connection Test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test
-        run: echo "Math Research Lab is working"
+      - name: Test Supabase connection
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          echo "Testing Supabase connection..."
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          echo "Requesting Supabase REST API..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/response.txt \
+            --write-out "%{http_code}" \
+            --request GET \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=id&limit=1" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json")
+
+          echo "HTTP status: ${HTTP_STATUS}"
+
+          cat /tmp/response.txt
+
+          if [ "${HTTP_STATUS}" != "200" ]; then
+            echo "Supabase connection failed."
+            exit 1
+          fi
+
+          echo "Supabase connection successful."
