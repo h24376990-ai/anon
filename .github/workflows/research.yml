@@ -1,4 +1,4 @@
-name: Research Lab Connection Test
+name: Math Research Lab
 
 on:
   workflow_dispatch:
@@ -7,15 +7,18 @@ permissions:
   contents: read
 
 jobs:
-  connection-test:
-    name: Test Supabase Connection
+  research-cycle:
+    name: Run Research Cycle
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --------------------------------------------------
+      # 1. Secrets確認
+      # --------------------------------------------------
       - name: Validate secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -23,7 +26,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Checking GitHub Actions secrets..."
+          echo "Checking required secrets..."
 
           if [ -z "${SUPABASE_URL:-}" ]; then
             echo "ERROR: SUPABASE_URL is not configured."
@@ -37,8 +40,11 @@ jobs:
 
           echo "Required secrets are available."
 
+      # --------------------------------------------------
+      # 2. Supabase URL正規化
+      # --------------------------------------------------
       - name: Normalize Supabase URL
-        id: url
+        id: supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
@@ -46,30 +52,28 @@ jobs:
 
           URL="${SUPABASE_URL}"
 
-          # Remove trailing slash.
           URL="${URL%/}"
-
-          # Remove accidental REST API suffix if it was included.
           URL="${URL%/rest/v1}"
-
-          # Remove another trailing slash if necessary.
           URL="${URL%/}"
 
-          echo "Supabase API base URL has been normalized."
+          echo "Supabase URL normalized."
 
-          # Do not print the actual URL to logs.
           echo "base_url=${URL}" >> "$GITHUB_OUTPUT"
 
-      - name: Test Supabase REST API
+      # --------------------------------------------------
+      # 3. queuedジョブを取得
+      # --------------------------------------------------
+      - name: Fetch queued research job
+        id: fetch_job
         env:
-          SUPABASE_API_BASE: ${{ steps.url.outputs.base_url }}
+          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
 
-          echo "Testing Supabase REST API..."
+          echo "Searching for queued research jobs..."
 
-          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,status,job_type&limit=1"
+          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,project_id,job_type,status,priority,payload,created_at&status=eq.queued&order=priority.desc,created_at.asc&limit=1"
 
           RESPONSE_FILE="$(mktemp)"
 
@@ -85,65 +89,164 @@ jobs:
             "${API_URL}")
 
           echo "HTTP status: ${HTTP_STATUS}"
-
-          echo "Supabase response:"
-          cat "${RESPONSE_FILE}"
-
-          echo ""
-
-          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
-            echo "Supabase REST API connection successful."
-          else
-            echo "Supabase REST API request failed."
-            exit 1
-          fi
-
-      - name: Verify research job exists
-        env:
-          SUPABASE_API_BASE: ${{ steps.url.outputs.base_url }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -euo pipefail
-
-          echo "Checking research_jobs..."
-
-          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,status,job_type,priority&limit=5"
-
-          RESPONSE_FILE="$(mktemp)"
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output "${RESPONSE_FILE}" \
-            --write-out "%{http_code}" \
-            --request GET \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            "${API_URL}")
-
-          echo "HTTP status: ${HTTP_STATUS}"
-
-          echo "Research jobs:"
-          cat "${RESPONSE_FILE}"
-
-          echo ""
 
           if [ "${HTTP_STATUS}" -ne 200 ]; then
-            echo "ERROR: Could not read research_jobs."
+            echo "ERROR: Failed to fetch research job."
+            cat "${RESPONSE_FILE}"
             exit 1
           fi
 
-          if grep -q '"id"' "${RESPONSE_FILE}"; then
-            echo "research_jobs table is accessible."
-          else
-            echo "WARNING: No research job was returned."
-            echo "The table is accessible, but there may currently be no jobs."
+          JOB_DATA=$(cat "${RESPONSE_FILE}")
+
+          echo "Queued job response:"
+          echo "${JOB_DATA}"
+
+          if [ "${JOB_DATA}" = "[]" ]; then
+            echo "No queued research job exists."
+            echo "Nothing to do."
+
+            echo "job_found=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
-      - name: Connection test completed
+          echo "Queued research job found."
+
+          echo "job_found=true" >> "$GITHUB_OUTPUT"
+
+          JOB_ID=$(python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          if not data:
+              sys.exit(1)
+
+          print(data[0]["id"])
+          ' <<< "${JOB_DATA}")
+
+          PROJECT_ID=$(python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          if not data:
+              sys.exit(1)
+
+          print(data[0]["project_id"])
+          ' <<< "${JOB_DATA}")
+
+          JOB_TYPE=$(python3 -c '
+          import json
+          import sys
+
+          data = json.load(sys.stdin)
+
+          if not data:
+              sys.exit(1)
+
+          print(data[0]["job_type"])
+          ' <<< "${JOB_DATA}")
+
+          echo "job_id=${JOB_ID}" >> "$GITHUB_OUTPUT"
+          echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
+          echo "job_type=${JOB_TYPE}" >> "$GITHUB_OUTPUT"
+
+      # --------------------------------------------------
+      # 4. queued → running
+      # --------------------------------------------------
+      - name: Mark job as running
+        if: steps.fetch_job.outputs.job_found == 'true'
+        env:
+          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ steps.fetch_job.outputs.job_id }}
         run: |
-          echo "========================================"
-          echo "Research Lab connection test completed."
-          echo "GitHub Actions -> Supabase: OK"
-          echo "========================================"
+          set -euo pipefail
+
+          echo "Marking research job as running..."
+
+          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued"
+
+          RESPONSE_FILE="$(mktemp)"
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out "%{http_code}" \
+            --request PATCH \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data '{
+              "status": "running",
+              "started_at": "'"$(date -u +"%Y-%m-%dT%H:%M:%SZ")"'"
+            }' \
+            "${API_URL}")
+
+          echo "HTTP status: ${HTTP_STATUS}"
+
+          echo "Updated job:"
+          cat "${RESPONSE_FILE}"
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            echo "ERROR: Failed to mark job as running."
+            exit 1
+          fi
+
+          echo "Research job is now running."
+
+      # --------------------------------------------------
+      # 5. 研究内容を確認
+      # --------------------------------------------------
+      - name: Inspect research job
+        if: steps.fetch_job.outputs.job_found == 'true'
+        env:
+          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JOB_ID: ${{ steps.fetch_job.outputs.job_id }}
+        run: |
+          set -euo pipefail
+
+          echo "=========================================="
+          echo "        RESEARCH JOB"
+          echo "=========================================="
+
+          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?id=eq.${JOB_ID}&select=id,project_id,job_type,status,priority,payload,created_at,started_at"
+
+          curl \
+            --silent \
+            --show-error \
+            --fail-with-body \
+            --request GET \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            "${API_URL}"
+
+          echo ""
+          echo "=========================================="
+          echo "Research job successfully acquired."
+          echo "=========================================="
+
+      # --------------------------------------------------
+      # 6. ジョブなしの場合
+      # --------------------------------------------------
+      - name: No queued job
+        if: steps.fetch_job.outputs.job_found != 'true'
+        run: |
+          echo "=========================================="
+          echo "No queued research job."
+          echo "=========================================="
+
+      # --------------------------------------------------
+      # 7. 終了
+      # --------------------------------------------------
+      - name: Cycle completed
+        run: |
+          echo "=========================================="
+          echo "Research cycle acquisition completed."
+          echo "=========================================="
