@@ -20,10 +20,26 @@ jobs:
 
           echo "Testing Supabase connection..."
 
+          if [ -z "${SUPABASE_URL}" ]; then
+            echo "ERROR: SUPABASE_URL is not configured."
+            exit 1
+          fi
+
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
+            echo "ERROR: SUPABASE_SERVICE_ROLE_KEY is not configured."
+            exit 1
+          fi
+
+          API_URL="${SUPABASE_URL%/}/rest/v1/research_jobs?select=id,status,job_type&limit=1"
+
+          echo "Requesting Supabase REST API..."
+
           RESPONSE=$(curl -sS \
+            --fail-with-body \
             -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            "${SUPABASE_URL}/rest/v1/research_jobs?select=id,status,job_type&limit=1")
+            -H "Content-Type: application/json" \
+            "${API_URL}")
 
           echo "Supabase response:"
           echo "$RESPONSE"
@@ -31,6 +47,6 @@ jobs:
           if echo "$RESPONSE" | grep -q '"id"'; then
             echo "Supabase connection successful."
           else
-            echo "Supabase connection failed."
+            echo "Supabase connection failed: research_jobs response did not contain an id."
             exit 1
           fi
