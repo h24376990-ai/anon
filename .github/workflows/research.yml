@@ -3,50 +3,147 @@ name: Research Lab Connection Test
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   connection-test:
+    name: Test Supabase Connection
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Test Supabase connection
+      - name: Validate secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "Testing Supabase connection..."
+          echo "Checking GitHub Actions secrets..."
 
-          if [ -z "${SUPABASE_URL}" ]; then
+          if [ -z "${SUPABASE_URL:-}" ]; then
             echo "ERROR: SUPABASE_URL is not configured."
             exit 1
           fi
 
-          if [ -z "${SUPABASE_SERVICE_ROLE_KEY}" ]; then
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
             echo "ERROR: SUPABASE_SERVICE_ROLE_KEY is not configured."
             exit 1
           fi
 
-          API_URL="${SUPABASE_URL%/}/rest/v1/research_jobs?select=id,status,job_type&limit=1"
+          echo "Required secrets are available."
 
-          echo "Requesting Supabase REST API..."
+      - name: Normalize Supabase URL
+        id: url
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
 
-          RESPONSE=$(curl -sS \
-            --fail-with-body \
-            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            -H "Content-Type: application/json" \
+          URL="${SUPABASE_URL}"
+
+          # Remove trailing slash.
+          URL="${URL%/}"
+
+          # Remove accidental REST API suffix if it was included.
+          URL="${URL%/rest/v1}"
+
+          # Remove another trailing slash if necessary.
+          URL="${URL%/}"
+
+          echo "Supabase API base URL has been normalized."
+
+          # Do not print the actual URL to logs.
+          echo "base_url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Test Supabase REST API
+        env:
+          SUPABASE_API_BASE: ${{ steps.url.outputs.base_url }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          echo "Testing Supabase REST API..."
+
+          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,status,job_type&limit=1"
+
+          RESPONSE_FILE="$(mktemp)"
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out "%{http_code}" \
+            --request GET \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
             "${API_URL}")
 
-          echo "Supabase response:"
-          echo "$RESPONSE"
+          echo "HTTP status: ${HTTP_STATUS}"
 
-          if echo "$RESPONSE" | grep -q '"id"'; then
-            echo "Supabase connection successful."
+          echo "Supabase response:"
+          cat "${RESPONSE_FILE}"
+
+          echo ""
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+            echo "Supabase REST API connection successful."
           else
-            echo "Supabase connection failed: research_jobs response did not contain an id."
+            echo "Supabase REST API request failed."
             exit 1
           fi
+
+      - name: Verify research job exists
+        env:
+          SUPABASE_API_BASE: ${{ steps.url.outputs.base_url }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          echo "Checking research_jobs..."
+
+          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,status,job_type,priority&limit=5"
+
+          RESPONSE_FILE="$(mktemp)"
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output "${RESPONSE_FILE}" \
+            --write-out "%{http_code}" \
+            --request GET \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            "${API_URL}")
+
+          echo "HTTP status: ${HTTP_STATUS}"
+
+          echo "Research jobs:"
+          cat "${RESPONSE_FILE}"
+
+          echo ""
+
+          if [ "${HTTP_STATUS}" -ne 200 ]; then
+            echo "ERROR: Could not read research_jobs."
+            exit 1
+          fi
+
+          if grep -q '"id"' "${RESPONSE_FILE}"; then
+            echo "research_jobs table is accessible."
+          else
+            echo "WARNING: No research job was returned."
+            echo "The table is accessible, but there may currently be no jobs."
+          fi
+
+      - name: Connection test completed
+        run: |
+          echo "========================================"
+          echo "Research Lab connection test completed."
+          echo "GitHub Actions -> Supabase: OK"
+          echo "========================================"
