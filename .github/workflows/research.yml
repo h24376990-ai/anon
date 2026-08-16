@@ -14,19 +14,21 @@ jobs:
 
     steps:
 
-      # ============================================================
-      # 1. Repository
-      # ============================================================
+      # ==========================================================
+      # STEP 10-1
+      # Repository
+      # ==========================================================
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # ============================================================
-      # 2. Validate secrets
-      # ============================================================
+      # ==========================================================
+      # STEP 10-2
+      # Check secrets
+      # ==========================================================
 
-      - name: Validate secrets
+      - name: Check required secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -36,29 +38,30 @@ jobs:
 
           echo "Checking required secrets..."
 
-          if [ -z "${SUPABASE_URL:-}" ]; then
-            echo "ERROR: SUPABASE_URL is not configured."
+          test -n "${SUPABASE_URL}" || {
+            echo "ERROR: SUPABASE_URL is missing."
             exit 1
-          fi
+          }
 
-          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
-            echo "ERROR: SUPABASE_SERVICE_ROLE_KEY is not configured."
+          test -n "${SUPABASE_SERVICE_ROLE_KEY}" || {
+            echo "ERROR: SUPABASE_SERVICE_ROLE_KEY is missing."
             exit 1
-          fi
+          }
 
-          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
-            echo "ERROR: OPENROUTER_API_KEY is not configured."
+          test -n "${OPENROUTER_API_KEY}" || {
+            echo "ERROR: OPENROUTER_API_KEY is missing."
             exit 1
-          fi
+          }
 
-          echo "All required secrets are available."
+          echo "Required secrets are available."
 
 
-      # ============================================================
-      # 3. Normalize Supabase URL
-      # ============================================================
+      # ==========================================================
+      # STEP 10-3
+      # Normalize Supabase URL
+      # ==========================================================
 
-      - name: Normalize Supabase URL
+      - name: Prepare Supabase URL
         id: supabase
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -67,117 +70,181 @@ jobs:
 
           URL="${SUPABASE_URL}"
 
-          # Remove trailing slash.
           URL="${URL%/}"
 
-          # Protect against accidentally storing /rest/v1
-          # in SUPABASE_URL.
+          # Prevent accidental duplication:
+          # /rest/v1/rest/v1
           URL="${URL%/rest/v1}"
 
-          # Remove trailing slash again.
           URL="${URL%/}"
 
-          echo "Supabase URL normalized."
+          echo "Supabase base URL prepared."
 
-          echo "base_url=${URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "base_url=${URL}"
+          } >> "$GITHUB_OUTPUT"
 
 
-      # ============================================================
-      # 4. Find one running research job
-      # ============================================================
+      # ==========================================================
+      # STEP 10-4
+      # Find one running job
+      # ==========================================================
 
       - name: Find running research job
         id: find_job
         env:
-          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
+          SUPABASE_BASE_URL: ${{ steps.supabase.outputs.base_url }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
 
           echo "Searching for a running research job..."
 
-          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?select=id,project_id,job_type,status,priority,payload,created_at,started_at&status=eq.running&order=started_at.asc&limit=1"
+          API_URL="${SUPABASE_BASE_URL}/rest/v1/research_jobs"
 
           RESPONSE_FILE="$(mktemp)"
 
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output "${RESPONSE_FILE}" \
-            --write-out "%{http_code}" \
-            --request GET \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            "${API_URL}")
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --request GET \
+              --url "${API_URL}" \
+              --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Content-Type: application/json" \
+              --get \
+              --data-urlencode "select=id,project_id,job_type,status,priority,payload,created_at,started_at" \
+              --data-urlencode "status=eq.running" \
+              --data-urlencode "order=started_at.asc" \
+              --data-urlencode "limit=1"
+          )"
 
-          echo "HTTP status: ${HTTP_STATUS}"
+          echo "Supabase HTTP status: ${HTTP_STATUS}"
 
-          if [ "${HTTP_STATUS}" -ne 200 ]; then
-            echo "ERROR: Failed to retrieve research job."
+          if [ "${HTTP_STATUS}" != "200" ]; then
+            echo "ERROR: Could not read research_jobs."
             cat "${RESPONSE_FILE}"
             exit 1
           fi
 
+          python3 - "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
+
+          filename = sys.argv[1]
+
+          with open(filename, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          if not data:
+              print("NO_JOB")
+              sys.exit(0)
+
+          job = data[0]
+
+          print("JOB_FOUND")
+
+          print(
+              json.dumps(
+                  job,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          )
+          PY
+
           JOB_DATA="$(cat "${RESPONSE_FILE}")"
 
           if [ "${JOB_DATA}" = "[]" ]; then
-            echo "No running research job found."
-            echo "Nothing to process."
+            echo "No running research job exists."
 
             echo "job_found=false" >> "$GITHUB_OUTPUT"
+
             exit 0
           fi
 
-          echo "Running research job found."
+          JOB_ID="$(
+            python3 - "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
 
-          JOB_ID=$(python3 -c '
-          import json, sys
-          data=json.load(sys.stdin)
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              data = json.load(f)
+
           print(data[0]["id"])
-          ' <<< "${JOB_DATA}")
+          PY
+          )"
 
-          PROJECT_ID=$(python3 -c '
-          import json, sys
-          data=json.load(sys.stdin)
-          print(data[0].get("project_id") or "")
-          ' <<< "${JOB_DATA}")
+          JOB_TYPE="$(
+            python3 - "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
 
-          JOB_TYPE=$(python3 -c '
-          import json, sys
-          data=json.load(sys.stdin)
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              data = json.load(f)
+
           print(data[0].get("job_type") or "")
-          ' <<< "${JOB_DATA}")
+          PY
+          )"
 
-          PAYLOAD=$(python3 -c '
-          import json, sys
-          data=json.load(sys.stdin)
-          payload=data[0].get("payload")
-          print(json.dumps(payload if payload is not None else {}))
-          ' <<< "${JOB_DATA}")
+          PROJECT_ID="$(
+            python3 - "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          print(data[0].get("project_id") or "")
+          PY
+          )"
+
+          PAYLOAD="$(
+            python3 - "${RESPONSE_FILE}" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          payload = data[0].get("payload")
+
+          if payload is None:
+              payload = {}
+
+          print(
+              json.dumps(
+                  payload,
+                  ensure_ascii=False
+              )
+          )
+          PY
+          )"
 
           echo "job_found=true" >> "$GITHUB_OUTPUT"
           echo "job_id=${JOB_ID}" >> "$GITHUB_OUTPUT"
-          echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
           echo "job_type=${JOB_TYPE}" >> "$GITHUB_OUTPUT"
+          echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
 
-          # Multiline-safe output.
           {
-            echo "payload<<EOF"
+            echo "payload<<PAYLOAD_EOF"
             echo "${PAYLOAD}"
-            echo "EOF"
+            echo "PAYLOAD_EOF"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Job ID: ${JOB_ID}"
+          echo "Research job found."
           echo "Job type: ${JOB_TYPE}"
 
 
-      # ============================================================
-      # 5. Build research prompt
-      # ============================================================
+      # ==========================================================
+      # STEP 10-5
+      # Build research prompt
+      # ==========================================================
 
-      - name: Build mathematics research prompt
-        id: prompt
+      - name: Build research prompt
         if: steps.find_job.outputs.job_found == 'true'
         env:
           JOB_TYPE: ${{ steps.find_job.outputs.job_type }}
@@ -185,113 +252,136 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > research_prompt.txt <<'PROMPT'
+          cat > research_prompt.txt <<EOF
 You are the research engine of an autonomous mathematics research laboratory.
 
-The primary research theme is the Riemann Hypothesis.
+PRIMARY RESEARCH THEME:
+Riemann Hypothesis.
 
-Your task is NOT to pretend that an unverified idea is a proof.
+CURRENT JOB TYPE:
+${JOB_TYPE}
 
-You must strictly distinguish:
+CURRENT JOB PAYLOAD:
+${JOB_PAYLOAD}
 
-1. Established mathematical facts
-2. Known theorems
-3. Published research claims
-4. Numerical evidence
-5. Your own hypotheses
-6. Unverified deductions
-7. Possible counterexamples
-8. Speculative connections
+============================================================
+RESEARCH RULES
+============================================================
 
-Never claim that the Riemann Hypothesis has been solved unless a complete, independently verified mathematical proof is actually available.
+The purpose is mathematical research, not conversational speculation.
 
-For every proposed research direction:
+Never claim that the Riemann Hypothesis has been proven unless
+a complete mathematical proof has actually been established.
 
-- State the research question.
-- Explain the mathematical motivation.
-- Identify known assumptions.
-- Separate known facts from conjectures.
-- Look for hidden assumptions.
-- Consider direct proof.
-- Consider proof by contradiction.
-- Consider the contrapositive when meaningful.
-- Consider special cases.
-- Consider boundary and extreme cases.
-- Consider counterexample searches.
-- Consider numerical experimentation where appropriate.
-- Identify what would have to be proved for the idea to succeed.
-- Identify the weakest unresolved step.
-- Try to falsify your own idea.
-- Do not confuse numerical evidence with proof.
-- Do not invent citations or papers.
-- If a statement cannot be verified, explicitly mark it as unverified.
+Strictly distinguish:
 
-Research strategy:
+- established mathematical facts
+- known theorems
+- published claims
+- numerical evidence
+- hypotheses
+- speculative ideas
+- unverified deductions
 
-Prefer genuinely different research routes rather than repeatedly rephrasing the same route.
+Never turn numerical evidence into a proof.
 
-If the supplied research history indicates that a route has already failed repeatedly, do not simply repeat it.
+Never invent:
+- papers
+- authors
+- theorem names
+- citations
+- experimental results
 
-Explore mathematical structures that may connect to:
+============================================================
+RESEARCH STRATEGY
+============================================================
 
-- analytic number theory
-- complex analysis
-- spectral theory
-- operator theory
-- geometry
-- probability
-- dynamical systems
-- mathematical physics
-- information theory
+Generate a mathematically meaningful research candidate.
 
-Cross-domain ideas are hypothesis-generation tools only. A physical analogy is NOT a mathematical proof.
+Consider, where appropriate:
 
-The goal of this cycle is to produce a rigorous research candidate that can be tested by later stages.
+1. Direct proof
+2. Proof by contradiction
+3. Contrapositive
+4. Special cases
+5. Boundary cases
+6. Extreme cases
+7. Counterexample search
+8. Numerical experimentation
+9. Analytic number theory
+10. Complex analysis
+11. Spectral theory
+12. Operator theory
+13. Geometry
+14. Probability
+15. Dynamical systems
+16. Mathematical physics
+17. Information theory
+18. Cross-domain structural analogies
 
-Return the result as valid JSON with exactly these top-level fields:
+Cross-domain analogies are hypothesis-generation tools only.
+
+Do not claim that a physical analogy proves a mathematical statement.
+
+Try to falsify your own idea.
+
+Identify the weakest unresolved step.
+
+Explain what would have to be proven for the approach to succeed.
+
+Prefer a genuinely different research direction instead of merely
+rephrasing an already failed approach.
+
+============================================================
+OUTPUT
+============================================================
+
+Return ONLY valid JSON.
+
+Use exactly these fields:
 
 {
-  "title": "...",
-  "research_question": "...",
-  "approach": "...",
+  "title": "string",
+  "research_question": "string",
+  "approach": "string",
   "known_facts": [],
   "hypotheses": [],
   "assumptions": [],
   "proof_strategy": [],
   "counterexample_strategy": [],
   "numerical_experiments": [],
-  "critical_gap": "...",
+  "critical_gap": "string",
   "failure_conditions": [],
   "next_steps": [],
   "confidence": 0.0,
   "status": "candidate"
 }
 
-The confidence must be between 0 and 1.
+confidence must be between 0 and 1.
 
-Never use "proven" unless the supplied reasoning actually contains a complete mathematical proof.
+Allowed status values:
 
-PROMPT
+candidate
+promising
+uncertain
+rejected
+needs_verification
 
-          echo "" >> research_prompt.txt
-          echo "CURRENT JOB TYPE:" >> research_prompt.txt
-          echo "${JOB_TYPE}" >> research_prompt.txt
+Do not use "proven" unless a complete mathematical proof is actually
+present and verified.
 
-          echo "" >> research_prompt.txt
-          echo "CURRENT JOB PAYLOAD:" >> research_prompt.txt
-          echo "${JOB_PAYLOAD}" >> research_prompt.txt
-
-          echo "" >> research_prompt.txt
-          echo "Generate one carefully reasoned research candidate." >> research_prompt.txt
+Produce ONE research candidate.
+EOF
 
           echo "Research prompt created."
 
 
-      # ============================================================
-      # 6. Call OpenRouter
-      # ============================================================
+      # ==========================================================
+      # STEP 10-6
+      # Call OpenRouter
+      # ==========================================================
 
-      - name: Run mathematics research AI
+      - name: Run research AI
         id: ai
         if: steps.find_job.outputs.job_found == 'true'
         env:
@@ -299,17 +389,16 @@ PROMPT
         run: |
           set -euo pipefail
 
-          echo "Calling OpenRouter mathematics research model..."
-
-          # Default model.
-          # This can later be replaced by the model selected
-          # for the research system.
-          MODEL="deepseek/deepseek-r1:free"
+          echo "Preparing OpenRouter request..."
 
           python3 - <<'PY'
           import json
 
-          prompt = open("research_prompt.txt", "r", encoding="utf-8").read()
+          prompt = open(
+              "research_prompt.txt",
+              "r",
+              encoding="utf-8"
+          ).read()
 
           body = {
               "model": "deepseek/deepseek-r1:free",
@@ -317,8 +406,8 @@ PROMPT
                   {
                       "role": "system",
                       "content": (
-                          "You are a rigorous autonomous mathematics "
-                          "research assistant. Return valid JSON only."
+                          "You are a rigorous mathematics research "
+                          "engine. Return JSON only."
                       )
                   },
                   {
@@ -330,82 +419,124 @@ PROMPT
               "max_tokens": 12000
           }
 
-          with open("openrouter_request.json", "w", encoding="utf-8") as f:
-              json.dump(body, f, ensure_ascii=False)
+          with open(
+              "openrouter_request.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  body,
+                  f,
+                  ensure_ascii=False
+              )
+
           PY
 
           RESPONSE_FILE="$(mktemp)"
 
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output "${RESPONSE_FILE}" \
-            --write-out "%{http_code}" \
-            --request POST \
-            --url "https://openrouter.ai/api/v1/chat/completions" \
-            --header "Authorization: Bearer ${OPENROUTER_API_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "HTTP-Referer: https://github.com/" \
-            --header "X-Title: Autonomous Mathematics Research Lab" \
-            --data-binary "@openrouter_request.json")
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --request POST \
+              --url "https://openrouter.ai/api/v1/chat/completions" \
+              --header "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+              --header "Content-Type: application/json" \
+              --header "HTTP-Referer: https://github.com/" \
+              --header "X-Title: Autonomous Mathematics Research Lab" \
+              --data-binary "@openrouter_request.json"
+          )"
 
           echo "OpenRouter HTTP status: ${HTTP_STATUS}"
 
           if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
             echo "ERROR: OpenRouter request failed."
-
-            # The response may contain useful error information,
-            # but never print the API key.
             cat "${RESPONSE_FILE}"
-
             exit 1
           fi
 
-          python3 - <<'PY'
+          python3 - "${RESPONSE_FILE}" <<'PY'
           import json
+          import sys
 
-          with open("${RESPONSE_FILE}", "r", encoding="utf-8") as f:
+          filename = sys.argv[1]
+
+          with open(
+              filename,
+              "r",
+              encoding="utf-8"
+          ) as f:
               data = json.load(f)
 
-          choices = data.get("choices", [])
+          choices = data.get("choices") or []
 
           if not choices:
-              raise RuntimeError("OpenRouter returned no choices.")
+              raise RuntimeError(
+                  "OpenRouter returned no choices."
+              )
 
-          content = choices[0]["message"]["content"]
+          message = choices[0].get("message") or {}
+
+          content = message.get("content")
 
           if not content:
-              raise RuntimeError("OpenRouter returned empty content.")
+              raise RuntimeError(
+                  "OpenRouter returned empty content."
+              )
 
-          with open("ai_result_raw.txt", "w", encoding="utf-8") as f:
+          with open(
+              "ai_result_raw.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
               f.write(content)
 
-          print("AI research response received.")
+          print("AI response received.")
+
           PY
 
 
-      # ============================================================
-      # 7. Validate AI JSON
-      # ============================================================
+      # ==========================================================
+      # STEP 10-7
+      # Validate AI result
+      # ==========================================================
 
-      - name: Validate research result
-        id: validate
+      - name: Validate AI research result
         if: steps.find_job.outputs.job_found == 'true'
         run: |
           set -euo pipefail
-
-          echo "Validating AI research result..."
 
           python3 - <<'PY'
           import json
           import re
 
-          raw = open("ai_result_raw.txt", "r", encoding="utf-8").read().strip()
+          raw = open(
+              "ai_result_raw.txt",
+              "r",
+              encoding="utf-8"
+          ).read().strip()
 
-          # Remove optional markdown JSON fences.
-          raw = re.sub(r"^```json\s*", "", raw, flags=re.IGNORECASE)
-          raw = re.sub(r"^```\s*", "", raw)
-          raw = re.sub(r"\s*```$", "", raw)
+          # Remove optional markdown fences.
+          raw = re.sub(
+              r"^```json\s*",
+              "",
+              raw,
+              flags=re.IGNORECASE
+          )
+
+          raw = re.sub(
+              r"^```\s*",
+              "",
+              raw
+          )
+
+          raw = re.sub(
+              r"\s*```$",
+              "",
+              raw
+          )
 
           data = json.loads(raw)
 
@@ -426,18 +557,20 @@ PROMPT
               "status"
           ]
 
-          missing = [x for x in required if x not in data]
+          for field in required:
+              if field not in data:
+                  raise RuntimeError(
+                      f"Missing field: {field}"
+                  )
 
-          if missing:
+          confidence = float(
+              data["confidence"]
+          )
+
+          if confidence < 0 or confidence > 1:
               raise RuntimeError(
-                  "Missing required research fields: "
-                  + ", ".join(missing)
+                  "confidence must be between 0 and 1"
               )
-
-          confidence = float(data["confidence"])
-
-          if not 0 <= confidence <= 1:
-              raise RuntimeError("confidence must be between 0 and 1.")
 
           allowed_status = {
               "candidate",
@@ -449,11 +582,14 @@ PROMPT
 
           if data["status"] not in allowed_status:
               raise RuntimeError(
-                  "Invalid research status: "
-                  + str(data["status"])
+                  f"Invalid status: {data['status']}"
               )
 
-          with open("research_result.json", "w", encoding="utf-8") as f:
+          with open(
+              "research_result.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
               json.dump(
                   data,
                   f,
@@ -461,68 +597,83 @@ PROMPT
                   indent=2
               )
 
-          print("Research result JSON is valid.")
+          print("AI research result is valid.")
           print("Title:", data["title"])
           print("Status:", data["status"])
           print("Confidence:", data["confidence"])
+
           PY
 
 
-      # ============================================================
-      # 8. Save result into research_jobs.payload
-      # ============================================================
+      # ==========================================================
+      # STEP 10-8
+      # Save result to Supabase
+      # ==========================================================
 
       - name: Save research result
-        id: save
         if: steps.find_job.outputs.job_found == 'true'
         env:
-          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
+          SUPABASE_BASE_URL: ${{ steps.supabase.outputs.base_url }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JOB_ID: ${{ steps.find_job.outputs.job_id }}
         run: |
           set -euo pipefail
 
-          echo "Saving research result to Supabase..."
-
           python3 - <<'PY'
           import json
           from datetime import datetime, timezone
 
-          with open("research_result.json", "r", encoding="utf-8") as f:
+          with open(
+              "research_result.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
               result = json.load(f)
 
-          payload = {
-              "research_result": result,
-              "research_completed_at": datetime.now(
-                  timezone.utc
-              ).isoformat(),
-              "research_engine_version": "step-10-v1"
+          patch = {
+              "payload": {
+                  "research_result": result,
+                  "research_engine_version": "step-10-v2",
+                  "research_completed_at":
+                      datetime.now(
+                          timezone.utc
+                      ).isoformat()
+              }
           }
 
-          with open("result_patch.json", "w", encoding="utf-8") as f:
-              json.dump(payload, f, ensure_ascii=False)
+          with open(
+              "supabase_patch.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  patch,
+                  f,
+                  ensure_ascii=False
+              )
 
-          print("Result payload prepared.")
           PY
 
-          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?id=eq.${JOB_ID}"
+          API_URL="${SUPABASE_BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}"
 
           RESPONSE_FILE="$(mktemp)"
 
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output "${RESPONSE_FILE}" \
-            --write-out "%{http_code}" \
-            --request PATCH \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data-binary @result_patch.json \
-            "${API_URL}")
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --request PATCH \
+              --url "${API_URL}" \
+              --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Content-Type: application/json" \
+              --header "Prefer: return=representation" \
+              --data-binary "@supabase_patch.json"
+          )"
 
-          echo "HTTP status: ${HTTP_STATUS}"
+          echo "Supabase HTTP status: ${HTTP_STATUS}"
 
           if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
             echo "ERROR: Failed to save research result."
@@ -530,23 +681,22 @@ PROMPT
             exit 1
           fi
 
-          echo "Research result saved successfully."
+          echo "Research result saved."
 
 
-      # ============================================================
-      # 9. Mark job completed
-      # ============================================================
+      # ==========================================================
+      # STEP 10-9
+      # Mark completed
+      # ==========================================================
 
-      - name: Mark research job completed
+      - name: Mark job completed
         if: steps.find_job.outputs.job_found == 'true'
         env:
-          SUPABASE_API_BASE: ${{ steps.supabase.outputs.base_url }}
+          SUPABASE_BASE_URL: ${{ steps.supabase.outputs.base_url }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           JOB_ID: ${{ steps.find_job.outputs.job_id }}
         run: |
           set -euo pipefail
-
-          echo "Marking research job as completed..."
 
           cat > completion.json <<EOF
           {
@@ -555,53 +705,55 @@ PROMPT
           }
           EOF
 
-          API_URL="${SUPABASE_API_BASE}/rest/v1/research_jobs?id=eq.${JOB_ID}"
+          API_URL="${SUPABASE_BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}"
 
           RESPONSE_FILE="$(mktemp)"
 
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output "${RESPONSE_FILE}" \
-            --write-out "%{http_code}" \
-            --request PATCH \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data-binary @completion.json \
-            "${API_URL}")
+          HTTP_STATUS="$(
+            curl \
+              --silent \
+              --show-error \
+              --output "${RESPONSE_FILE}" \
+              --write-out "%{http_code}" \
+              --request PATCH \
+              --url "${API_URL}" \
+              --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header "Content-Type: application/json" \
+              --header "Prefer: return=representation" \
+              --data-binary "@completion.json"
+          )"
 
-          echo "HTTP status: ${HTTP_STATUS}"
+          echo "Supabase HTTP status: ${HTTP_STATUS}"
 
           if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-            echo "ERROR: Failed to mark job completed."
+            echo "ERROR: Could not mark job completed."
             cat "${RESPONSE_FILE}"
             exit 1
           fi
 
-          echo "Research job completed."
+          echo "Research job completed successfully."
 
 
-      # ============================================================
-      # 10. No job
-      # ============================================================
+      # ==========================================================
+      # STEP 10-10
+      # No job
+      # ==========================================================
 
       - name: No running job
         if: steps.find_job.outputs.job_found != 'true'
         run: |
-          echo "=========================================="
-          echo "No running research job."
-          echo "Nothing to process."
-          echo "=========================================="
+          echo "No running research job was found."
+          echo "This is not an error."
 
 
-      # ============================================================
-      # 11. Final
-      # ============================================================
+      # ==========================================================
+      # STEP 10-11
+      # Finish
+      # ==========================================================
 
-      - name: Research cycle finished
+      - name: Finish research cycle
         run: |
           echo "=========================================="
-          echo "Mathematics research cycle finished."
+          echo "STEP 10 research cycle finished."
           echo "=========================================="
