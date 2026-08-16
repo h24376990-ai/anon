@@ -1,0 +1,36 @@
+name: Research Lab Connection Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  connection-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test Supabase connection
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          echo "Testing Supabase connection..."
+
+          RESPONSE=$(curl -sS \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            "${SUPABASE_URL}/rest/v1/research_jobs?select=id,status,job_type&limit=1")
+
+          echo "Supabase response:"
+          echo "$RESPONSE"
+
+          if echo "$RESPONSE" | grep -q '"id"'; then
+            echo "Supabase connection successful."
+          else
+            echo "Supabase connection failed."
+            exit 1
+          fi
