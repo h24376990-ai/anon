@@ -567,3 +567,98 @@ jobs:
           echo "========================================"
           echo "RESEARCH RESULT SAVED SUCCESSFULLY"
           echo "========================================"
+
+                # ========================================
+      # STEP 16
+      # research_jobs を completed にする
+      # ========================================
+      - name: Complete research job
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 - <<'PY'
+          import json
+
+          with open(
+              "/tmp/research_job.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              job = json.load(f)
+
+          print(job["id"])
+          PY
+          )
+
+          echo "Completing research job..."
+          echo "Job ID: ${JOB_ID}"
+
+          python3 - <<'PY'
+          import json
+
+          with open(
+              "/tmp/validated_result.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              result = json.load(f)
+
+          output = {
+              "title": result.get("title"),
+              "status": result.get("status"),
+              "confidence": result.get("confidence"),
+              "research_question": result.get(
+                  "research_question"
+              )
+          }
+
+          with open(
+              "/tmp/job_result.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  output,
+                  f,
+                  ensure_ascii=False
+              )
+          PY
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/complete_response.json \
+            --write-out "%{http_code}" \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data-binary @- <<EOF
+          {
+            "status": "completed",
+            "result": $(cat /tmp/job_result.json)
+          }
+          EOF
+          )
+
+          echo "Supabase update HTTP status: ${HTTP_STATUS}"
+
+          cat /tmp/complete_response.json
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            echo "Failed to complete research job."
+            exit 1
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "RESEARCH JOB COMPLETED"
+          echo "========================================"
