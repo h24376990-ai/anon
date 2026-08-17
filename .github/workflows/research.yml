@@ -354,37 +354,19 @@ jobs:
               )
 
           print("")
-          print(
-              "AI result validation successful."
-          )
-          print(
-              "Title:",
-              result["title"]
-          )
-          print(
-              "Status:",
-              result["status"]
-          )
-          print(
-              "Confidence:",
-              result["confidence"]
-          )
+          print("AI result validation successful.")
+          print("Title:", result["title"])
+          print("Status:", result["status"])
+          print("Confidence:", result["confidence"])
+          PY
 
 
       # ========================================
       # STEP 5
-      # research_results に保存
+      # research_results 用データ作成
       # ========================================
-      - name: Save research result
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Prepare research result
         run: |
-          set -e
-
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
           python3 - <<'PY'
           import json
 
@@ -412,18 +394,21 @@ jobs:
           if confidence > 1:
               confidence = 1
 
-          # DBのCHECK制約:
+          # DB constraint:
           # confidence_level >= 0
           # confidence_level <= 5
           confidence_level = round(
               confidence * 5
           )
 
-          if confidence_level < 0:
-              confidence_level = 0
+          confidence_level = max(
+              0,
+              min(5, confidence_level)
+          )
 
-          if confidence_level > 5:
-              confidence_level = 5
+          # AIがまだ証明・反証していない研究は
+          # 「△」として扱う。
+          evaluation = "△"
 
           content = {
               "research_question":
@@ -459,25 +444,17 @@ jobs:
               "next_steps":
                   result.get("next_steps", []),
 
-              "source_job_id":
-                  job.get("id"),
-
-              "research_configuration":
-                  job.get("payload", {})
-          }
-
-          evaluation = {
               "ai_status":
                   result.get("status"),
 
               "ai_confidence":
                   result.get("confidence"),
 
-              "critical_gap":
-                  result.get("critical_gap"),
-
               "source_job_id":
-                  job.get("id")
+                  job.get("id"),
+
+              "research_configuration":
+                  job.get("payload", {})
           }
 
           record = {
@@ -500,10 +477,7 @@ jobs:
                   "pending",
 
               "evaluation":
-                  json.dumps(
-                      evaluation,
-                      ensure_ascii=False
-                  ),
+                  evaluation,
 
               "confidence_level":
                   confidence_level,
@@ -523,9 +497,7 @@ jobs:
                   ensure_ascii=False
               )
 
-          print(
-              "Prepared research_results record."
-          )
+          print("Prepared research_results record.")
           print(
               "Project ID:",
               record["project_id"]
@@ -540,13 +512,32 @@ jobs:
           )
           print(
               "DB confidence_level:",
-              record["confidence_level"]
+              confidence_level
+          )
+          print(
+              "Evaluation:",
+              evaluation
           )
           print(
               "Status:",
               record["status"]
           )
           PY
+
+
+      # ========================================
+      # STEP 6
+      # Supabaseへ保存
+      # ========================================
+      - name: Save research result
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
 
           echo "Saving research result to Supabase..."
 
