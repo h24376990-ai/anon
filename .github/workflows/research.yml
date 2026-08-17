@@ -8,42 +8,59 @@ permissions:
 
 jobs:
   test:
-    name: Supabase Connection Test
+    name: Get Queued Research Job
     runs-on: ubuntu-latest
 
     steps:
-      - name: Test Supabase connection
+      - name: Get queued job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -e
 
-          echo "Testing Supabase connection..."
+          echo "Connecting to Supabase..."
 
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          echo "Requesting Supabase REST API..."
+          echo "Searching for queued research job..."
 
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/response.txt \
+            --output /tmp/jobs.json \
             --write-out "%{http_code}" \
             --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=id&limit=1" \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=created_at.asc&limit=1" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json")
 
           echo "HTTP status: ${HTTP_STATUS}"
 
-          cat /tmp/response.txt
+          cat /tmp/jobs.json
 
           if [ "${HTTP_STATUS}" != "200" ]; then
-            echo "Supabase connection failed."
+            echo "Failed to get queued jobs."
             exit 1
           fi
 
-          echo "Supabase connection successful."
+          echo ""
+          echo "Supabase query succeeded."
+
+          python3 - <<'PY'
+          import json
+
+          with open("/tmp/jobs.json", "r", encoding="utf-8") as f:
+              jobs = json.load(f)
+
+          if not jobs:
+              print("No queued job found.")
+          else:
+              print("Queued job found!")
+              print("Job ID:", jobs[0].get("id"))
+              print("Status:", jobs[0].get("status"))
+              print("Job type:", jobs[0].get("job_type"))
+              print("Project ID:", jobs[0].get("project_id"))
+          PY
