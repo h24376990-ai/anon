@@ -8,11 +8,14 @@ permissions:
 
 jobs:
   research:
-    name: AI Research Test
+    name: AI Research and Save
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
+      # ========================================
+      # 1. running の研究ジョブを取得
+      # ========================================
       - name: Get running research job
         id: job
         env:
@@ -22,7 +25,6 @@ jobs:
           set -e
 
           echo "Connecting to Supabase..."
-
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
@@ -59,14 +61,21 @@ jobs:
 
           job = jobs[0]
 
+          print("")
           print("Running job found!")
           print("Job ID:", job["id"])
+          print("Job type:", job.get("job_type"))
+          print("Project ID:", job.get("project_id"))
+          print("Status:", job.get("status"))
           print("Theme:", job.get("payload", {}).get("theme"))
 
           with open("/tmp/research_job.json", "w", encoding="utf-8") as f:
               json.dump(job, f, ensure_ascii=False, indent=2)
           PY
 
+      # ========================================
+      # 2. AI研究プロンプトを作成
+      # ========================================
       - name: Build research prompt
         run: |
           python3 - <<'PY'
@@ -145,6 +154,9 @@ jobs:
           print("Research prompt created.")
           PY
 
+      # ========================================
+      # 3. OpenRouter AI
+      # ========================================
       - name: Call OpenRouter
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -221,6 +233,9 @@ jobs:
           print("AI response received.")
           PY
 
+      # ========================================
+      # 4. AI結果を検証
+      # ========================================
       - name: Validate AI result
         run: |
           python3 - <<'PY'
@@ -260,30 +275,112 @@ jobs:
           if confidence < 0 or confidence > 1:
               raise SystemExit("Confidence must be between 0 and 1.")
 
+          with open("/tmp/validated_result.json", "w", encoding="utf-8") as f:
+              json.dump(result, f, ensure_ascii=False, indent=2)
+
           print("")
-          print("========================================")
-          print("AI RESEARCH RESULT")
-          print("========================================")
-          print("")
-          print("Title:")
-          print(result["title"])
-          print("")
-          print("Research question:")
-          print(result["research_question"])
-          print("")
-          print("Hypothesis:")
-          print(result["hypothesis"])
-          print("")
-          print("Critical gap:")
-          print(result["critical_gap"])
-          print("")
-          print("Status:")
-          print(result["status"])
-          print("")
-          print("Confidence:")
-          print(result["confidence"])
-          print("")
-          print("========================================")
-          print("AI RESEARCH TEST SUCCESS")
-          print("========================================")
+          print("AI result validation successful.")
+          print("Title:", result["title"])
+          print("Status:", result["status"])
+          print("Confidence:", result["confidence"])
+
+      # ========================================
+      # 5. research_results に保存
+      # ========================================
+      - name: Save research result
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          python3 - <<'PY'
+          import json
+
+          with open("/tmp/research_job.json", "r", encoding="utf-8") as f:
+              job = json.load(f)
+
+          with open("/tmp/validated_result.json", "r", encoding="utf-8") as f:
+              result = json.load(f)
+
+          confidence = float(result.get("confidence", 0))
+
+          # research_results.confidence_level は integer
+          confidence_level = round(confidence * 100)
+
+          # content に研究全体の詳細を保存
+          content = {
+              "research_question": result.get("research_question"),
+              "known_facts": result.get("known_facts", []),
+              "assumptions": result.get("assumptions", []),
+              "approach": result.get("approach", []),
+              "proof_strategy": result.get("proof_strategy", []),
+              "counterexample_strategy": result.get("counterexample_strategy", []),
+              "cross_domain_connection": result.get("cross_domain_connection", []),
+              "critical_gap": result.get("critical_gap"),
+              "next_steps": result.get("next_steps", []),
+              "source_job_id": job.get("id"),
+              "research_configuration": job.get("payload", {})
+          }
+
+          # evaluation はAI自身の評価・判断を保存
+          evaluation = {
+              "ai_status": result.get("status"),
+              "ai_confidence": result.get("confidence"),
+              "critical_gap": result.get("critical_gap"),
+              "source_job_id": job.get("id")
+          }
+
+          # status は現在のDB仕様に合わせて pending
+          # 人間による⭕△❌判定はまだ行わない
+          record = {
+              "project_id": job["project_id"],
+              "title": result["title"],
+              "hypothesis": result["hypothesis"],
+              "content": json.dumps(content, ensure_ascii=False),
+              "status": "pending",
+              "evaluation": json.dumps(evaluation, ensure_ascii=False),
+              "confidence_level": confidence_level,
+              "is_human_saved": False
+          }
+
+          with open("/tmp/research_result_record.json", "w", encoding="utf-8") as f:
+              json.dump(record, f, ensure_ascii=False)
+
+          print("Prepared research_results record.")
+          print("Project ID:", record["project_id"])
+          print("Title:", record["title"])
+          print("Confidence level:", record["confidence_level"])
           PY
+
+          echo "Saving research result to Supabase..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/save_response.json \
+            --write-out "%{http_code}" \
+            --request POST \
+            --url "${BASE_URL}/rest/v1/research_results" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data-binary @/tmp/research_result_record.json)
+
+          echo "Supabase insert HTTP status: ${HTTP_STATUS}"
+
+          cat /tmp/save_response.json
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+              echo "Failed to save research result."
+              exit 1
+          fi
+
+          echo ""
+          echo "========================================"
+          echo "RESEARCH RESULT SAVED SUCCESSFULLY"
+          echo "========================================"
