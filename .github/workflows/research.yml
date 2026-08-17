@@ -17,12 +17,12 @@ jobs:
 
     steps:
 
-          # ========================================
-      # STEP 17
-      # queued の研究ジョブを取得して running にする
+      # ========================================
+      # STEP 17-1
+      # queued の研究ジョブを取得
       # ========================================
       - name: Get queued research job
-        id: job
+        id: get_job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -58,7 +58,6 @@ jobs:
 
           python3 - <<'PY'
           import json
-          import sys
 
           with open(
               "/tmp/job.json",
@@ -69,8 +68,17 @@ jobs:
 
           if not jobs:
               print("No queued research job found.")
-              print("This is normal when the queue is empty.")
-              sys.exit(0)
+              print("Queue is empty. Nothing to do.")
+              print("has_job=false")
+
+              with open(
+                  "/tmp/job_exists.txt",
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+                  f.write("false")
+
+              raise SystemExit(0)
 
           job = jobs[0]
 
@@ -80,6 +88,7 @@ jobs:
           print("Job type:", job.get("job_type"))
           print("Project ID:", job.get("project_id"))
           print("Status:", job.get("status"))
+          print("Payload:", job.get("payload"))
 
           with open(
               "/tmp/research_job.json",
@@ -92,12 +101,36 @@ jobs:
                   ensure_ascii=False,
                   indent=2
               )
+
+          with open(
+              "/tmp/job_exists.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              f.write("true")
           PY
 
-          if [ ! -f /tmp/research_job.json ]; then
-            echo "No job to process."
-            exit 0
-          fi
+          JOB_EXISTS=$(cat /tmp/job_exists.txt)
+
+          echo "Job exists: ${JOB_EXISTS}"
+
+          echo "job_exists=${JOB_EXISTS}" >> "${GITHUB_OUTPUT}"
+
+
+      # ========================================
+      # STEP 17-2
+      # queued → running
+      # ========================================
+      - name: Start research job
+        if: steps.get_job.outputs.job_exists == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
 
           JOB_ID=$(python3 - <<'PY'
           import json
@@ -113,7 +146,7 @@ jobs:
           PY
           )
 
-          echo "Starting queued job..."
+          echo "Starting research job..."
           echo "Job ID: ${JOB_ID}"
 
           HTTP_STATUS=$(curl \
@@ -138,33 +171,27 @@ jobs:
             exit 1
           fi
 
-          echo "Research job is now running."
-
-          job = jobs[0]
-
-          print("")
-          print("Running job found!")
-          print("Job ID:", job["id"])
-          print("Job type:", job.get("job_type"))
-          print("Project ID:", job.get("project_id"))
-          print("Status:", job.get("status"))
-          print("Theme:", job.get("payload", {}).get("theme"))
-
-          with open("/tmp/research_job.json", "w", encoding="utf-8") as f:
-              json.dump(job, f, ensure_ascii=False, indent=2)
-          PY
+          echo ""
+          echo "Research job is now RUNNING."
 
 
       # ========================================
-      # STEP 2
+      # STEP 17-3
       # AI研究プロンプト作成
       # ========================================
       - name: Build research prompt
+        if: steps.get_job.outputs.job_exists == 'true'
         run: |
+          set -e
+
           python3 - <<'PY'
           import json
 
-          with open("/tmp/research_job.json", "r", encoding="utf-8") as f:
+          with open(
+              "/tmp/research_job.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
               job = json.load(f)
 
           payload = job.get("payload", {})
@@ -205,12 +232,12 @@ jobs:
 
           Return ONLY valid JSON.
 
-          Use this exact structure:
+          Use exactly this structure:
 
           {{
             "title": "research title",
-            "research_question": "precise question",
-            "hypothesis": "hypothesis",
+            "research_question": "precise research question",
+            "hypothesis": "research hypothesis",
             "known_facts": [],
             "assumptions": [],
             "approach": [],
@@ -234,7 +261,11 @@ jobs:
           Confidence must be between 0 and 1.
           """
 
-          with open("/tmp/prompt.txt", "w", encoding="utf-8") as f:
+          with open(
+              "/tmp/prompt.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
               f.write(prompt)
 
           print("Research prompt created.")
@@ -242,10 +273,11 @@ jobs:
 
 
       # ========================================
-      # STEP 3
+      # STEP 17-4
       # OpenRouter
       # ========================================
       - name: Call OpenRouter
+        if: steps.get_job.outputs.job_exists == 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
@@ -266,7 +298,7 @@ jobs:
                       "role": "system",
                       "content": (
                           "You are a rigorous mathematics research AI. "
-                          "Return JSON only."
+                          "Return valid JSON only."
                       )
                   },
                   {
@@ -353,11 +385,14 @@ jobs:
 
 
       # ========================================
-      # STEP 4
-      # AI結果のJSON検証
+      # STEP 17-5
+      # AI結果の検証
       # ========================================
       - name: Validate AI result
+        if: steps.get_job.outputs.job_exists == 'true'
         run: |
+          set -e
+
           python3 - <<'PY'
           import json
           import re
@@ -440,11 +475,14 @@ jobs:
 
 
       # ========================================
-      # STEP 5
+      # STEP 17-6
       # research_results 用データ作成
       # ========================================
       - name: Prepare research result
+        if: steps.get_job.outputs.job_exists == 'true'
         run: |
+          set -e
+
           python3 - <<'PY'
           import json
 
@@ -466,13 +504,12 @@ jobs:
               result.get("confidence", 0)
           )
 
-          if confidence < 0:
-              confidence = 0
+          confidence = max(
+              0,
+              min(1, confidence)
+          )
 
-          if confidence > 1:
-              confidence = 1
-
-          # DB constraint:
+          # DB制約:
           # confidence_level >= 0
           # confidence_level <= 5
           confidence_level = round(
@@ -484,8 +521,7 @@ jobs:
               min(5, confidence_level)
           )
 
-          # AIがまだ証明・反証していない研究は
-          # 「△」として扱う。
+          # 未検証の研究は△
           evaluation = "△"
 
           content = {
@@ -604,10 +640,11 @@ jobs:
 
 
       # ========================================
-      # STEP 6
-      # Supabaseへ保存
+      # STEP 17-7
+      # research_results 保存
       # ========================================
       - name: Save research result
+        if: steps.get_job.outputs.job_exists == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -646,11 +683,13 @@ jobs:
           echo "RESEARCH RESULT SAVED SUCCESSFULLY"
           echo "========================================"
 
-                # ========================================
-      # STEP 16
-      # research_jobs を completed にする
+
+      # ========================================
+      # STEP 17-8
+      # running → completed
       # ========================================
       - name: Complete research job
+        if: steps.get_job.outputs.job_exists == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -714,7 +753,7 @@ jobs:
             --output /tmp/complete_response.json \
             --write-out "%{http_code}" \
             --request PATCH \
-            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}" \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json" \
@@ -740,3 +779,17 @@ jobs:
           echo "========================================"
           echo "RESEARCH JOB COMPLETED"
           echo "========================================"
+
+
+      # ========================================
+      # STEP 17-9
+      # キューが空の場合の正常終了メッセージ
+      # ========================================
+      - name: Queue status
+        if: steps.get_job.outputs.job_exists != 'true'
+        run: |
+          echo "========================================"
+          echo "NO QUEUED RESEARCH JOB"
+          echo "========================================"
+          echo "The queue is currently empty."
+          echo "This scheduled run completed normally."
