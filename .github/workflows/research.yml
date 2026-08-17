@@ -68,8 +68,6 @@ jobs:
           PY
 
       - name: Build research prompt
-        env:
-          JOB_FILE: /tmp/research_job.json
         run: |
           python3 - <<'PY'
           import json
@@ -159,7 +157,7 @@ jobs:
           prompt = open("/tmp/prompt.txt", encoding="utf-8").read()
 
           request = {
-              "model": "deepseek/deepseek-r1:free",
+              "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
               "messages": [
                   {
                       "role": "system",
