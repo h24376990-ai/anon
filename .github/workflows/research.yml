@@ -17,11 +17,11 @@ jobs:
 
     steps:
 
+          # ========================================
+      # STEP 17
+      # queued の研究ジョブを取得して running にする
       # ========================================
-      # STEP 1
-      # running の研究ジョブを取得
-      # ========================================
-      - name: Get running research job
+      - name: Get queued research job
         id: job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -34,7 +34,7 @@ jobs:
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          echo "Searching for running research job..."
+          echo "Searching for queued research job..."
 
           HTTP_STATUS=$(curl \
             --silent \
@@ -42,7 +42,7 @@ jobs:
             --output /tmp/job.json \
             --write-out "%{http_code}" \
             --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.running&order=started_at.asc&limit=1" \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=1" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json")
@@ -52,18 +52,93 @@ jobs:
           cat /tmp/job.json
 
           if [ "${HTTP_STATUS}" != "200" ]; then
-            echo "Failed to get research job."
+            echo "Failed to get queued research job."
             exit 1
           fi
 
           python3 - <<'PY'
           import json
+          import sys
 
-          with open("/tmp/job.json", "r", encoding="utf-8") as f:
+          with open(
+              "/tmp/job.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
               jobs = json.load(f)
 
           if not jobs:
-              raise SystemExit("No running research job found.")
+              print("No queued research job found.")
+              print("This is normal when the queue is empty.")
+              sys.exit(0)
+
+          job = jobs[0]
+
+          print("")
+          print("Queued job found!")
+          print("Job ID:", job["id"])
+          print("Job type:", job.get("job_type"))
+          print("Project ID:", job.get("project_id"))
+          print("Status:", job.get("status"))
+
+          with open(
+              "/tmp/research_job.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  job,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+          PY
+
+          if [ ! -f /tmp/research_job.json ]; then
+            echo "No job to process."
+            exit 0
+          fi
+
+          JOB_ID=$(python3 - <<'PY'
+          import json
+
+          with open(
+              "/tmp/research_job.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              job = json.load(f)
+
+          print(job["id"])
+          PY
+          )
+
+          echo "Starting queued job..."
+          echo "Job ID: ${JOB_ID}"
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/start_response.json \
+            --write-out "%{http_code}" \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data '{"status":"running"}')
+
+          echo "Start job HTTP status: ${HTTP_STATUS}"
+
+          cat /tmp/start_response.json
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            echo "Failed to change job to running."
+            exit 1
+          fi
+
+          echo "Research job is now running."
 
           job = jobs[0]
 
