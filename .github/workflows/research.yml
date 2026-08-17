@@ -1,289 +1,3 @@
-name: Math Research Lab
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  research:
-    name: AI Research and Save
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      # ========================================
-      # 1. running の研究ジョブを取得
-      # ========================================
-      - name: Get running research job
-        id: job
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -e
-
-          echo "Connecting to Supabase..."
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
-          echo "Searching for running research job..."
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output /tmp/job.json \
-            --write-out "%{http_code}" \
-            --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.running&order=started_at.asc&limit=1" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json")
-
-          echo "HTTP status: ${HTTP_STATUS}"
-
-          cat /tmp/job.json
-
-          if [ "${HTTP_STATUS}" != "200" ]; then
-            echo "Failed to get research job."
-            exit 1
-          fi
-
-          python3 - <<'PY'
-          import json
-
-          with open("/tmp/job.json", "r", encoding="utf-8") as f:
-              jobs = json.load(f)
-
-          if not jobs:
-              raise SystemExit("No running research job found.")
-
-          job = jobs[0]
-
-          print("")
-          print("Running job found!")
-          print("Job ID:", job["id"])
-          print("Job type:", job.get("job_type"))
-          print("Project ID:", job.get("project_id"))
-          print("Status:", job.get("status"))
-          print("Theme:", job.get("payload", {}).get("theme"))
-
-          with open("/tmp/research_job.json", "w", encoding="utf-8") as f:
-              json.dump(job, f, ensure_ascii=False, indent=2)
-          PY
-
-      # ========================================
-      # 2. AI研究プロンプトを作成
-      # ========================================
-      - name: Build research prompt
-        run: |
-          python3 - <<'PY'
-          import json
-
-          with open("/tmp/research_job.json", "r", encoding="utf-8") as f:
-              job = json.load(f)
-
-          payload = job.get("payload", {})
-
-          theme = payload.get("theme", "Riemann Hypothesis")
-
-          prompt = f"""
-          You are the research engine of an autonomous mathematics research laboratory.
-
-          Research theme:
-          {theme}
-
-          Research configuration:
-          {json.dumps(payload, ensure_ascii=False, indent=2)}
-
-          Your task is to generate ONE serious mathematical research hypothesis.
-
-          IMPORTANT RULES:
-
-          1. Never claim an unproven statement is proven.
-          2. Clearly separate known facts from hypotheses.
-          3. Never invent papers, authors, citations, theorems, or calculations.
-          4. Numerical evidence is NOT a proof.
-          5. Try to find counterexamples to your own idea.
-          6. Consider proof by contradiction.
-          7. Consider direct proof.
-          8. Consider the contrapositive when meaningful.
-          9. Consider special cases and boundary cases.
-          10. Consider connections to other mathematical fields.
-          11. Cross-domain analogies are hypothesis-generation tools only.
-          12. Do not pretend that an analogy proves anything.
-          13. Identify the biggest logical gap in the proposed approach.
-          14. Suggest concrete next experiments or proof steps.
-          15. Prefer a genuinely different research direction over a trivial rewording.
-
-          Return ONLY valid JSON.
-
-          Use this exact structure:
-
-          {{
-            "title": "research title",
-            "research_question": "precise question",
-            "hypothesis": "hypothesis",
-            "known_facts": [],
-            "assumptions": [],
-            "approach": [],
-            "proof_strategy": [],
-            "counterexample_strategy": [],
-            "cross_domain_connection": [],
-            "critical_gap": "largest unresolved issue",
-            "next_steps": [],
-            "confidence": 0.0,
-            "status": "needs_verification"
-          }}
-
-          Allowed status values:
-
-          candidate
-          promising
-          uncertain
-          rejected
-          needs_verification
-
-          Confidence must be between 0 and 1.
-          """
-
-          with open("/tmp/prompt.txt", "w", encoding="utf-8") as f:
-              f.write(prompt)
-
-          print("Research prompt created.")
-          PY
-
-      # ========================================
-      # 3. OpenRouter AI
-      # ========================================
-      - name: Call OpenRouter
-        env:
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: |
-          set -e
-
-          python3 - <<'PY'
-          import json
-
-          prompt = open("/tmp/prompt.txt", encoding="utf-8").read()
-
-          request = {
-              "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
-              "messages": [
-                  {
-                      "role": "system",
-                      "content": "You are a rigorous mathematics research AI. Return JSON only."
-                  },
-                  {
-                      "role": "user",
-                      "content": prompt
-                  }
-              ],
-              "temperature": 0.2,
-              "max_tokens": 10000
-          }
-
-          with open("/tmp/openrouter_request.json", "w", encoding="utf-8") as f:
-              json.dump(request, f, ensure_ascii=False)
-          PY
-
-          echo "Calling OpenRouter..."
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output /tmp/openrouter_response.json \
-            --write-out "%{http_code}" \
-            --request POST \
-            --url "https://openrouter.ai/api/v1/chat/completions" \
-            --header "Authorization: Bearer ${OPENROUTER_API_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "HTTP-Referer: https://github.com/" \
-            --header "X-Title: Math Research Lab" \
-            --data-binary @/tmp/openrouter_request.json)
-
-          echo "OpenRouter HTTP status: ${HTTP_STATUS}"
-
-          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-              echo "OpenRouter request failed."
-              cat /tmp/openrouter_response.json
-              exit 1
-          fi
-
-          python3 - <<'PY'
-          import json
-
-          with open("/tmp/openrouter_response.json", "r", encoding="utf-8") as f:
-              data = json.load(f)
-
-          choices = data.get("choices", [])
-
-          if not choices:
-              raise SystemExit("OpenRouter returned no choices.")
-
-          content = choices[0].get("message", {}).get("content", "")
-
-          if not content:
-              raise SystemExit("OpenRouter returned empty content.")
-
-          with open("/tmp/ai_result.txt", "w", encoding="utf-8") as f:
-              f.write(content)
-
-          print("AI response received.")
-          PY
-
-      # ========================================
-      # 4. AI結果を検証
-      # ========================================
-      - name: Validate AI result
-        run: |
-          python3 - <<'PY'
-          import json
-          import re
-
-          raw = open("/tmp/ai_result.txt", encoding="utf-8").read().strip()
-
-          raw = re.sub(r"^```json\s*", "", raw, flags=re.IGNORECASE)
-          raw = re.sub(r"^```\s*", "", raw)
-          raw = re.sub(r"\s*```$", "", raw)
-
-          result = json.loads(raw)
-
-          required = [
-              "title",
-              "research_question",
-              "hypothesis",
-              "known_facts",
-              "assumptions",
-              "approach",
-              "proof_strategy",
-              "counterexample_strategy",
-              "cross_domain_connection",
-              "critical_gap",
-              "next_steps",
-              "confidence",
-              "status"
-          ]
-
-          for field in required:
-              if field not in result:
-                  raise SystemExit("Missing field: " + field)
-
-          confidence = float(result["confidence"])
-
-          if confidence < 0 or confidence > 1:
-              raise SystemExit("Confidence must be between 0 and 1.")
-
-          with open("/tmp/validated_result.json", "w", encoding="utf-8") as f:
-              json.dump(result, f, ensure_ascii=False, indent=2)
-
-          print("")
-          print("AI result validation successful.")
-          print("Title:", result["title"])
-          print("Status:", result["status"])
-          print("Confidence:", result["confidence"])
-
       # ========================================
       # 5. research_results に保存
       # ========================================
@@ -299,6 +13,7 @@ jobs:
 
           python3 - <<'PY'
           import json
+          import math
 
           with open("/tmp/research_job.json", "r", encoding="utf-8") as f:
               job = json.load(f)
@@ -308,10 +23,23 @@ jobs:
 
           confidence = float(result.get("confidence", 0))
 
-          # research_results.confidence_level は integer
-          confidence_level = round(confidence * 100)
+          # AI confidence は 0.0〜1.0
+          if confidence < 0:
+              confidence = 0
 
-          # content に研究全体の詳細を保存
+          if confidence > 1:
+              confidence = 1
+
+          # DBのconfidence_levelは0〜5
+          confidence_level = round(confidence * 5)
+
+          if confidence_level < 0:
+              confidence_level = 0
+
+          if confidence_level > 5:
+              confidence_level = 5
+
+          # 研究全体の詳細
           content = {
               "research_question": result.get("research_question"),
               "known_facts": result.get("known_facts", []),
@@ -326,7 +54,7 @@ jobs:
               "research_configuration": job.get("payload", {})
           }
 
-          # evaluation はAI自身の評価・判断を保存
+          # AIによる評価
           evaluation = {
               "ai_status": result.get("status"),
               "ai_confidence": result.get("confidence"),
@@ -334,8 +62,6 @@ jobs:
               "source_job_id": job.get("id")
           }
 
-          # status は現在のDB仕様に合わせて pending
-          # 人間による⭕△❌判定はまだ行わない
           record = {
               "project_id": job["project_id"],
               "title": result["title"],
@@ -353,7 +79,9 @@ jobs:
           print("Prepared research_results record.")
           print("Project ID:", record["project_id"])
           print("Title:", record["title"])
-          print("Confidence level:", record["confidence_level"])
+          print("AI confidence:", confidence)
+          print("DB confidence_level:", record["confidence_level"])
+          print("Status:", record["status"])
           PY
 
           echo "Saving research result to Supabase..."
