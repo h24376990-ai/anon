@@ -8,11 +8,11 @@ permissions:
 
 jobs:
   test:
-    name: Get Queued Research Job
+    name: Check Running Research Job
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get queued job
+      - name: Get running job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -24,7 +24,7 @@ jobs:
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          echo "Searching for queued research job..."
+          echo "Searching for running research job..."
 
           HTTP_STATUS=$(curl \
             --silent \
@@ -32,7 +32,7 @@ jobs:
             --output /tmp/jobs.json \
             --write-out "%{http_code}" \
             --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=created_at.asc&limit=1" \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.running&order=started_at.asc&limit=1" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json")
@@ -42,7 +42,7 @@ jobs:
           cat /tmp/jobs.json
 
           if [ "${HTTP_STATUS}" != "200" ]; then
-            echo "Failed to get queued jobs."
+            echo "Failed to get running jobs."
             exit 1
           fi
 
@@ -56,11 +56,14 @@ jobs:
               jobs = json.load(f)
 
           if not jobs:
-              print("No queued job found.")
+              print("No running job found.")
           else:
-              print("Queued job found!")
-              print("Job ID:", jobs[0].get("id"))
-              print("Status:", jobs[0].get("status"))
-              print("Job type:", jobs[0].get("job_type"))
-              print("Project ID:", jobs[0].get("project_id"))
+              job = jobs[0]
+
+              print("Running job found!")
+              print("Job ID:", job.get("id"))
+              print("Status:", job.get("status"))
+              print("Job type:", job.get("job_type"))
+              print("Project ID:", job.get("project_id"))
+              print("Payload:", job.get("payload"))
           PY
