@@ -1,13 +1,537 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="theme-color" content="#070b16">
 <title>Research AI Lab</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="styles.css">
+
+<style>
+*{
+  box-sizing:border-box;
+  margin:0;
+  padding:0;
+}
+
+:root{
+  --bg:#070b16;
+  --panel:#0d1424;
+  --panel2:#111a2e;
+  --line:#26334e;
+  --text:#edf4ff;
+  --muted:#8ea0bc;
+  --accent:#65b8ff;
+  --accent2:#8b7cff;
+  --green:#50e3a4;
+  --yellow:#ffd166;
+  --red:#ff647c;
+  --shadow:0 20px 60px rgba(0,0,0,.35);
+}
+
+body{
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 20% 0%,rgba(70,120,255,.13),transparent 35%),
+    radial-gradient(circle at 100% 20%,rgba(130,80,255,.12),transparent 35%),
+    var(--bg);
+  color:var(--text);
+  font-family:
+    -apple-system,BlinkMacSystemFont,
+    "Segoe UI","Noto Sans JP",sans-serif;
+}
+
+button,
+textarea{
+  font:inherit;
+}
+
+button{
+  cursor:pointer;
+}
+
+.app{
+  min-height:100vh;
+  display:flex;
+}
+
+/* =========================
+   SIDEBAR
+========================= */
+
+.sidebar{
+  width:245px;
+  min-height:100vh;
+  position:fixed;
+  left:0;
+  top:0;
+  padding:24px 16px;
+  background:rgba(7,11,22,.88);
+  backdrop-filter:blur(18px);
+  border-right:1px solid var(--line);
+  z-index:20;
+}
+
+.logo{
+  font-size:21px;
+  font-weight:800;
+  letter-spacing:.5px;
+  padding:8px 12px 26px;
+}
+
+.logo span{
+  color:var(--accent);
+}
+
+.nav{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+
+.nav button{
+  width:100%;
+  border:1px solid transparent;
+  background:transparent;
+  color:var(--muted);
+  padding:13px 14px;
+  border-radius:12px;
+  text-align:left;
+  transition:.2s;
+}
+
+.nav button:hover{
+  background:rgba(101,184,255,.07);
+  color:var(--text);
+}
+
+.nav button.active{
+  background:linear-gradient(
+    90deg,
+    rgba(101,184,255,.16),
+    rgba(139,124,255,.08)
+  );
+  border-color:rgba(101,184,255,.25);
+  color:white;
+}
+
+.nav-icon{
+  display:inline-block;
+  width:25px;
+}
+
+/* =========================
+   MAIN
+========================= */
+
+.main{
+  margin-left:245px;
+  width:calc(100% - 245px);
+  min-height:100vh;
+  padding:30px;
+}
+
+.page{
+  display:none;
+}
+
+.page.active{
+  display:block;
+}
+
+.header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:20px;
+  margin-bottom:24px;
+}
+
+.header h1{
+  font-size:29px;
+  margin-bottom:7px;
+}
+
+.header p{
+  color:var(--muted);
+}
+
+.connection{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:10px 14px;
+  border:1px solid var(--line);
+  background:rgba(13,20,36,.8);
+  border-radius:999px;
+  font-size:13px;
+  white-space:nowrap;
+}
+
+.dot{
+  width:9px;
+  height:9px;
+  border-radius:50%;
+  background:var(--yellow);
+  box-shadow:0 0 12px currentColor;
+}
+
+.dot.ok{
+  background:var(--green);
+}
+
+.dot.error{
+  background:var(--red);
+}
+
+/* =========================
+   CARDS
+========================= */
+
+.grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(320px,.8fr);
+  gap:20px;
+}
+
+.card{
+  background:linear-gradient(
+    145deg,
+    rgba(17,26,46,.94),
+    rgba(10,16,30,.94)
+  );
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:22px;
+  box-shadow:var(--shadow);
+}
+
+.card + .card{
+  margin-top:20px;
+}
+
+.title-row{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:15px;
+  margin-bottom:16px;
+}
+
+.title-row h2{
+  font-size:17px;
+}
+
+.small{
+  font-size:12px;
+  color:var(--muted);
+}
+
+textarea{
+  width:100%;
+  min-height:180px;
+  resize:vertical;
+  background:#080e1d;
+  color:var(--text);
+  border:1px solid #293956;
+  border-radius:14px;
+  padding:17px;
+  outline:none;
+  line-height:1.7;
+}
+
+textarea:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(101,184,255,.08);
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
+.actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+
+.btn{
+  border:1px solid var(--line);
+  border-radius:11px;
+  padding:11px 16px;
+  background:#101a2d;
+  color:var(--text);
+  transition:.2s;
+}
+
+.btn:hover{
+  transform:translateY(-1px);
+  border-color:#3b5278;
+}
+
+.btn.primary{
+  border-color:rgba(101,184,255,.4);
+  background:linear-gradient(
+    135deg,
+    #287ec5,
+    #5950c9
+  );
+  color:white;
+  font-weight:700;
+}
+
+.btn.danger{
+  border-color:rgba(255,100,124,.35);
+  color:#ff91a1;
+}
+
+.btn.success{
+  border-color:rgba(80,227,164,.3);
+  color:#73eab5;
+}
+
+.btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+}
+
+/* =========================
+   STATUS
+========================= */
+
+.status{
+  margin-top:18px;
+  border:1px solid var(--line);
+  background:#080e1b;
+  border-radius:14px;
+  padding:16px;
+  white-space:pre-wrap;
+  line-height:1.6;
+  color:var(--muted);
+}
+
+.status.success{
+  border-color:rgba(80,227,164,.3);
+  color:#9ef0cb;
+}
+
+.status.error{
+  border-color:rgba(255,100,124,.35);
+  color:#ff9bab;
+}
+
+.status.running{
+  border-color:rgba(101,184,255,.35);
+  color:#9fd6ff;
+}
+
+/* =========================
+   PROGRESS
+========================= */
+
+.progress-wrap{
+  margin-top:15px;
+}
+
+.progress-bar{
+  height:7px;
+  background:#18243a;
+  border-radius:999px;
+  overflow:hidden;
+}
+
+.progress-value{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));
+  transition:.4s;
+}
+
+.progress-info{
+  display:flex;
+  justify-content:space-between;
+  margin-top:7px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+/* =========================
+   JOB
+========================= */
+
+.job-box{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+
+.job-item{
+  background:#080e1b;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:12px;
+}
+
+.job-label{
+  color:var(--muted);
+  font-size:11px;
+  margin-bottom:5px;
+}
+
+.job-value{
+  font-size:13px;
+  word-break:break-word;
+}
+
+/* =========================
+   HISTORY
+========================= */
+
+.history{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  max-height:620px;
+  overflow:auto;
+}
+
+.history-item{
+  border:1px solid var(--line);
+  background:#080e1b;
+  border-radius:12px;
+  padding:13px;
+  cursor:pointer;
+  transition:.2s;
+}
+
+.history-item:hover{
+  border-color:#456080;
+  background:#0c1424;
+}
+
+.history-title{
+  font-weight:700;
+  font-size:14px;
+  line-height:1.4;
+}
+
+.history-meta{
+  color:var(--muted);
+  font-size:11px;
+  margin-top:7px;
+}
+
+.symbol{
+  display:inline-flex;
+  width:25px;
+  height:25px;
+  align-items:center;
+  justify-content:center;
+  border-radius:7px;
+  margin-right:7px;
+  background:#17233a;
+}
+
+/* =========================
+   DETAIL
+========================= */
+
+.detail{
+  margin-top:20px;
+}
+
+.detail-section{
+  margin-top:15px;
+  padding:15px;
+  border:1px solid var(--line);
+  background:#080e1b;
+  border-radius:12px;
+}
+
+.detail-section h3{
+  font-size:13px;
+  color:var(--accent);
+  margin-bottom:8px;
+}
+
+.detail-section p,
+.detail-section pre{
+  color:#c6d2e5;
+  white-space:pre-wrap;
+  line-height:1.65;
+  font-size:13px;
+}
+
+/* =========================
+   EMPTY
+========================= */
+
+.empty{
+  color:var(--muted);
+  text-align:center;
+  padding:30px 10px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+
+@media(max-width:900px){
+
+  .sidebar{
+    position:fixed;
+    width:100%;
+    height:auto;
+    min-height:auto;
+    bottom:0;
+    top:auto;
+    left:0;
+    padding:7px;
+    border-right:none;
+    border-top:1px solid var(--line);
+  }
+
+  .logo{
+    display:none;
+  }
+
+  .nav{
+    flex-direction:row;
+    overflow-x:auto;
+  }
+
+  .nav button{
+    min-width:85px;
+    text-align:center;
+    font-size:11px;
+    padding:9px 5px;
+  }
+
+  .nav-icon{
+    display:block;
+    margin:auto auto 2px;
+  }
+
+  .main{
+    margin-left:0;
+    width:100%;
+    padding:18px;
+    padding-bottom:100px;
+  }
+
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  .header{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+</style>
 </head>
 
 <body>
@@ -16,297 +540,2223 @@
 
 <aside class="sidebar">
 
-<div class="logo">
-Research <span>AI</span>
-</div>
+  <div class="logo">
+    Research <span>AI</span>
+  </div>
 
-<nav class="nav">
+  <nav class="nav">
 
-<button class="nav-button active" data-page="research">
-⌂ <span>研究</span>
-</button>
+    <button class="active" data-page="research">
+      <span class="nav-icon">⌂</span>
+      研究
+    </button>
 
-<button class="nav-button" data-page="history">
-◉ <span>履歴</span>
-</button>
+    <button data-page="history">
+      <span class="nav-icon">◷</span>
+      履歴
+    </button>
 
-<button class="nav-button" data-page="saved">
-★ <span>保存</span>
-</button>
+    <button data-page="saved">
+      <span class="nav-icon">★</span>
+      保存
+    </button>
 
-<button class="nav-button" data-page="jobs">
-⚙ <span>ジョブ</span>
-</button>
+    <button data-page="jobs">
+      <span class="nav-icon">⚙</span>
+      ジョブ
+    </button>
 
-<button class="nav-button" data-page="models">
-△ <span>3Dモデル</span>
-</button>
+    <button data-page="models">
+      <span class="nav-icon">◇</span>
+      3D
+    </button>
 
-<button class="nav-button" data-page="memory">
-▣ <span>研究記憶</span>
-</button>
+  </nav>
 
-<button class="nav-button" data-page="routes">
-↗ <span>探索ルート</span>
-</button>
-
-</nav>
 </aside>
-
 
 <main class="main">
 
-<header class="top">
+<!-- ================= RESEARCH ================= -->
 
-<div>
-<div class="eyebrow">
-AUTONOMOUS MATHEMATICAL RESEARCH
-</div>
+<section class="page active" id="page-research">
 
-<h1>数学研究ラボ</h1>
+  <header class="header">
 
-<p>
-ブラウザとは独立してバックグラウンド研究を実行
-</p>
-</div>
+    <div>
+      <h1>数学研究ラボ</h1>
+      <p>
+        仮説・計算・反証・検証をバックグラウンドで継続
+      </p>
+    </div>
 
-<div class="connection">
-<span id="connectionDot" class="dot"></span>
-<span id="connectionText">接続確認中...</span>
-</div>
+    <div class="connection">
+      <span id="connectionDot" class="dot"></span>
+      <span id="connectionText">接続確認中...</span>
+    </div>
 
-</header>
+  </header>
+
+  <div class="grid">
+
+    <div>
+
+      <div class="card">
+
+        <div class="title-row">
+          <h2>新しい研究</h2>
+          <span class="small">
+            Research Queue
+          </span>
+        </div>
+
+        <textarea
+          id="questionInput"
+          placeholder="研究したい数学的問題を入力してください。
+
+例：
+リーマン予想について、既存の理論とは異なる検証可能なアプローチを探索する。"
+        ></textarea>
+
+        <div class="actions">
+
+          <button
+            class="btn primary"
+            id="researchButton"
+          >
+            ▶ 研究開始
+          </button>
+
+          <button
+            class="btn danger"
+            id="stopButton"
+            disabled
+          >
+            ■ 研究停止
+          </button>
+
+          <button
+            class="btn"
+            id="clearButton"
+          >
+            クリア
+          </button>
+
+        </div>
+
+        <div
+          id="statusBox"
+          class="status"
+        >
+          待機中
+        </div>
+
+        <div class="progress-wrap">
+
+          <div class="progress-bar">
+            <div
+              id="progressValue"
+              class="progress-value"
+            ></div>
+          </div>
+
+          <div class="progress-info">
+            <span id="progressText">
+              待機中
+            </span>
+
+            <span id="progressPercent">
+              0%
+            </span>
+          </div>
+
+        </div>
+
+      </div>
 
 
-<section id="page-research" class="page active">
+      <div class="card">
 
-<div class="grid">
+        <div class="title-row">
+          <h2>現在の研究ジョブ</h2>
+          <span class="small">
+            Background Research
+          </span>
+        </div>
+
+        <div
+          id="jobBox"
+          class="job-box"
+        >
+
+          <div class="job-item">
+            <div class="job-label">状態</div>
+            <div
+              id="jobStatus"
+              class="job-value"
+            >
+              -
+            </div>
+          </div>
+
+          <div class="job-item">
+            <div class="job-label">ジョブID</div>
+            <div
+              id="jobId"
+              class="job-value"
+            >
+              -
+            </div>
+          </div>
+
+          <div class="job-item">
+            <div class="job-label">作成日時</div>
+            <div
+              id="jobCreated"
+              class="job-value"
+            >
+              -
+            </div>
+          </div>
+
+          <div class="job-item">
+            <div class="job-label">優先度</div>
+            <div
+              id="jobPriority"
+              class="job-value"
+            >
+              -
+            </div>
+          </div>
+
+        </div>
+
+      </div>
 
 
-<div class="card">
+      <div
+        id="latestCard"
+        class="card"
+        style="display:none"
+      >
 
-<h2>新しい研究</h2>
+        <div class="title-row">
+          <h2>最新の研究結果</h2>
+          <button
+            class="btn"
+            id="toggleDetail"
+          >
+            詳細
+          </button>
+        </div>
 
-<textarea
-id="questionInput"
-placeholder="研究したい数学的問題・仮説・疑問を入力してください"
-></textarea>
+        <h3 id="latestTitle"></h3>
+
+        <div
+          id="latestMeta"
+          class="small"
+          style="margin-top:8px"
+        ></div>
+
+        <div
+          id="latestContent"
+          class="detail"
+        ></div>
+
+      </div>
+
+    </div>
 
 
-<div class="buttons">
+    <aside>
 
-<button
-id="researchButton"
-class="button primary"
+      <div class="card">
+
+        <div class="title-row">
+          <h2>研究履歴</h2>
+
+          <span
+            id="historyCount"
+            class="small"
+          >
+            0件
+          </span>
+        </div>
+
+        <div
+          id="historyList"
+          class="history"
+        >
+          <div class="empty">
+            まだ研究結果がありません。
+          </div>
+        </div>
+
+        <div
+          class="small"
+          style="margin-top:12px"
+        >
+          最新100件を表示します。<br>
+          ⭕保存された結果は別途保持します。
+        </div>
+
+      </div>
+
+    </aside>
+
+  </div>
+
+</section>
+
+
+<!-- ================= HISTORY ================= -->
+
+<section
+  class="page"
+  id="page-history"
 >
-▶ 研究開始
-</button>
 
-<button
-id="stopButton"
-class="button danger"
-disabled
+  <div class="header">
+    <div>
+      <h1>研究履歴</h1>
+      <p>最新100件の研究結果</p>
+    </div>
+  </div>
+
+  <div class="card">
+
+    <div
+      id="historyPageList"
+      class="history"
+    ></div>
+
+  </div>
+
+</section>
+
+
+<!-- ================= SAVED ================= -->
+
+<section
+  class="page"
+  id="page-saved"
 >
-■ 研究停止
-</button>
 
-<button
-id="clearButton"
-class="button"
+  <div class="header">
+    <div>
+      <h1>保存した研究</h1>
+      <p>あなたが重要と判断した研究</p>
+    </div>
+  </div>
+
+  <div class="card">
+
+    <div
+      id="savedList"
+      class="history"
+    ></div>
+
+  </div>
+
+</section>
+
+
+<!-- ================= JOBS ================= -->
+
+<section
+  class="page"
+  id="page-jobs"
 >
-入力を消去
-</button>
 
-</div>
+  <div class="header">
+    <div>
+      <h1>研究ジョブ</h1>
+      <p>バックグラウンド研究の状態</p>
+    </div>
+  </div>
 
+  <div class="card">
 
-<div id="statusBox" class="status"></div>
+    <div
+      id="allJobs"
+      class="history"
+    ></div>
 
-
-<div id="jobPanel" class="job hidden">
-
-<div class="job-title">
-
-<b>バックグラウンドジョブ</b>
-
-<span id="jobStatus" class="badge">
-QUEUED
-</span>
-
-</div>
-
-<code id="jobId"></code>
-
-
-<div class="progress">
-<div id="progressValue"></div>
-</div>
-
-
-<div class="progress-info">
-
-<span id="progressText">
-待機中
-</span>
-
-<span id="progressPercent">
-0%
-</span>
-
-</div>
-
-
-<div class="times">
-
-<span>
-作成
-<b id="jobCreated">—</b>
-</span>
-
-<span>
-開始
-<b id="jobStarted">—</b>
-</span>
-
-<span>
-終了
-<b id="jobFinished">—</b>
-</span>
-
-</div>
-
-</div>
-
-</div>
-
-
-<div class="card detail-card">
-
-<h2>研究結果</h2>
-
-<div id="detail">
-
-<div class="empty">
-結果を選択すると詳細が表示されます。
-</div>
-
-</div>
-
-</div>
-
-</div>
+  </div>
 
 </section>
 
 
-<section id="page-history" class="page">
+<!-- ================= 3D ================= -->
 
-<div class="card">
+<section
+  class="page"
+  id="page-models"
+>
 
-<div class="section-head">
+  <div class="header">
+    <div>
+      <h1>3D研究モデル</h1>
+      <p>数学的構造を視覚化する研究スペース</p>
+    </div>
+  </div>
 
-<h2>研究履歴</h2>
+  <div class="card">
 
-<span id="historyCount">
-0件
-</span>
+    <div
+      style="
+        height:500px;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        border:1px solid var(--line);
+        border-radius:16px;
+        background:
+          radial-gradient(
+            circle,
+            rgba(101,184,255,.12),
+            transparent 55%
+          ),
+          #080e1b;
+      "
+    >
 
-</div>
+      <div style="text-align:center">
 
-<div id="historyList"></div>
+        <div
+          style="
+            font-size:90px;
+            margin-bottom:20px;
+            opacity:.75;
+          "
+        >
+          ◇
+        </div>
 
-</div>
+        <h2>3D Mathematical Visualization</h2>
 
-</section>
+        <p
+          class="small"
+          style="margin-top:10px"
+        >
+          研究結果から数式・グラフ・構造を
+          3Dモデルとして表示する領域
+        </p>
 
+      </div>
 
-<section id="page-saved" class="page">
+    </div>
 
-<div class="card">
-
-<h2>保存した研究</h2>
-
-<div id="savedList"></div>
-
-</div>
-
-</section>
-
-
-<section id="page-jobs" class="page">
-
-<div class="card">
-
-<h2>研究ジョブ</h2>
-
-<div id="jobsList"></div>
-
-</div>
-
-</section>
-
-
-<section id="page-models" class="page">
-
-<div class="card">
-
-<h2>3D数学モデル</h2>
-
-<div class="model-grid">
-
-<div class="model">
-∞
-<b>曲面・多様体</b>
-</div>
-
-<div class="model">
-ζ
-<b>ゼータ関数</b>
-</div>
-
-<div class="model">
-◌
-<b>研究ネットワーク</b>
-</div>
-
-</div>
-
-</div>
+  </div>
 
 </section>
-
-
-<section id="page-memory" class="page">
-
-<div class="card">
-
-<h2>研究記憶</h2>
-
-<div id="memoryList"></div>
-
-</div>
-
-</section>
-
-
-<section id="page-routes" class="page">
-
-<div class="card">
-
-<h2>探索ルート</h2>
-
-<div id="routesList"></div>
-
-</div>
-
-</section>
-
 
 </main>
 
 </div>
 
-<script src="app.js"></script>
+
+<script>
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const SUPABASE_URL =
+  "https://hiefdcodifkfhnqvruzn.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "sb_publishable_HmcPY6BGvUQTPESGHVe7Hw_W4NlTPqj";
+
+/*
+ * 現在使用している project_id
+ */
+const DEFAULT_PROJECT_ID =
+  "ab429192-27d2-47e4-9ad7-08b639f45120";
+
+
+/* =========================================================
+   SUPABASE
+========================================================= */
+
+const client =
+  window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+  );
+
+
+/* =========================================================
+   STATE
+========================================================= */
+
+let currentProjectId =
+  localStorage.getItem(
+    "research_project_id"
+  ) ||
+  DEFAULT_PROJECT_ID;
+
+localStorage.setItem(
+  "research_project_id",
+  currentProjectId
+);
+
+let currentJob = null;
+
+let pollingTimer = null;
+
+
+/* =========================================================
+   DOM
+========================================================= */
+
+const questionInput =
+  document.getElementById(
+    "questionInput"
+  );
+
+const researchButton =
+  document.getElementById(
+    "researchButton"
+  );
+
+const stopButton =
+  document.getElementById(
+    "stopButton"
+  );
+
+const clearButton =
+  document.getElementById(
+    "clearButton"
+  );
+
+const statusBox =
+  document.getElementById(
+    "statusBox"
+  );
+
+const connectionDot =
+  document.getElementById(
+    "connectionDot"
+  );
+
+const connectionText =
+  document.getElementById(
+    "connectionText"
+  );
+
+const progressValue =
+  document.getElementById(
+    "progressValue"
+  );
+
+const progressText =
+  document.getElementById(
+    "progressText"
+  );
+
+const progressPercent =
+  document.getElementById(
+    "progressPercent"
+  );
+
+const jobStatus =
+  document.getElementById(
+    "jobStatus"
+  );
+
+const jobId =
+  document.getElementById(
+    "jobId"
+  );
+
+const jobCreated =
+  document.getElementById(
+    "jobCreated"
+  );
+
+const jobPriority =
+  document.getElementById(
+    "jobPriority"
+  );
+
+const historyList =
+  document.getElementById(
+    "historyList"
+  );
+
+const historyPageList =
+  document.getElementById(
+    "historyPageList"
+  );
+
+const savedList =
+  document.getElementById(
+    "savedList"
+  );
+
+const allJobs =
+  document.getElementById(
+    "allJobs"
+  );
+
+const historyCount =
+  document.getElementById(
+    "historyCount"
+  );
+
+const latestCard =
+  document.getElementById(
+    "latestCard"
+  );
+
+const latestTitle =
+  document.getElementById(
+    "latestTitle"
+  );
+
+const latestMeta =
+  document.getElementById(
+    "latestMeta"
+  );
+
+const latestContent =
+  document.getElementById(
+    "latestContent"
+  );
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function setStatus(
+  message,
+  type = ""
+){
+
+  statusBox.textContent =
+    message;
+
+  statusBox.className =
+    "status " + type;
+}
+
+
+function setProgress(
+  value,
+  text
+){
+
+  const v =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        Number(value) || 0
+      )
+    );
+
+  progressValue.style.width =
+    `${v}%`;
+
+  progressPercent.textContent =
+    `${Math.round(v)}%`;
+
+  progressText.textContent =
+    text || "";
+}
+
+
+function escapeHtml(
+  value
+){
+
+  return String(
+    value ?? ""
+  )
+  .replaceAll("&","&amp;")
+  .replaceAll("<","&lt;")
+  .replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;")
+  .replaceAll("'","&#039;");
+}
+
+
+function formatDate(
+  value
+){
+
+  if(!value){
+    return "-";
+  }
+
+  try{
+
+    return new Date(value)
+      .toLocaleString(
+        "ja-JP"
+      );
+
+  }catch{
+
+    return String(value);
+
+  }
+}
+
+
+function symbolForResult(
+  result
+){
+
+  if(
+    result.evaluation === "⭕️" ||
+    result.evaluation === "⭕"
+  ){
+
+    return "⭕";
+
+  }
+
+  if(
+    result.evaluation === "❌"
+  ){
+
+    return "❌";
+
+  }
+
+  return "△";
+}
+
+
+function contentObject(
+  result
+){
+
+  if(
+    !result ||
+    !result.content
+  ){
+
+    return {};
+  }
+
+  if(
+    typeof result.content ===
+    "object"
+  ){
+
+    return result.content;
+  }
+
+  try{
+
+    return JSON.parse(
+      result.content
+    );
+
+  }catch{
+
+    return {
+      raw:
+        String(
+          result.content
+        )
+    };
+
+  }
+}
+
+
+/* =========================================================
+   CONNECTION
+========================================================= */
+
+async function checkConnection(){
+
+  connectionText.textContent =
+    "接続確認中...";
+
+  connectionDot.className =
+    "dot";
+
+  try{
+
+    const {
+      error
+    } =
+      await client
+        .from(
+          "research_results"
+        )
+        .select(
+          "id",
+          {
+            count:"exact",
+            head:true
+          }
+        )
+        .eq(
+          "project_id",
+          currentProjectId
+        );
+
+    if(error){
+
+      throw error;
+
+    }
+
+    connectionDot.className =
+      "dot ok";
+
+    connectionText.textContent =
+      "Supabase接続OK";
+
+  }catch(error){
+
+    console.error(
+      "Supabase connection:",
+      error
+    );
+
+    connectionDot.className =
+      "dot error";
+
+    connectionText.textContent =
+      "Supabase接続エラー";
+
+  }
+
+}
+
+
+/* =========================================================
+   CREATE RESEARCH JOB
+========================================================= */
+
+async function startResearch(){
+
+  const message =
+    questionInput.value.trim();
+
+  if(!message){
+
+    setStatus(
+      "研究内容を入力してください。",
+      "error"
+    );
+
+    questionInput.focus();
+
+    return;
+  }
+
+
+  /*
+   * 重要：
+   * Edge Functionを呼ばない。
+   *
+   * research_jobsへ直接INSERTする。
+   */
+
+  researchButton.disabled =
+    true;
+
+  stopButton.disabled =
+    false;
+
+  setProgress(
+    5,
+    "研究ジョブを作成中..."
+  );
+
+  setStatus(
+    "研究ジョブをキューに登録しています...",
+    "running"
+  );
+
+
+  try{
+
+    /*
+     * 既に実行中/queuedのジョブがある場合
+     * 二重起動を防止
+     */
+
+    const {
+      data: existing,
+      error: existingError
+    } =
+      await client
+        .from(
+          "research_jobs"
+        )
+        .select(
+          "id,status"
+        )
+        .eq(
+          "project_id",
+          currentProjectId
+        )
+        .in(
+          "status",
+          [
+            "queued",
+            "running"
+          ]
+        )
+        .order(
+          "created_at",
+          {
+            ascending:false
+          }
+        )
+        .limit(1);
+
+    if(existingError){
+
+      throw existingError;
+
+    }
+
+
+    if(
+      existing &&
+      existing.length > 0
+    ){
+
+      currentJob =
+        existing[0];
+
+      setStatus(
+        "すでに研究ジョブが存在します。\n\n" +
+        `状態: ${existing[0].status}\n` +
+        `ID: ${existing[0].id}`,
+        "running"
+      );
+
+      setProgress(
+        15,
+        "既存ジョブを監視中..."
+      );
+
+      await refreshJob();
+
+      startPolling();
+
+      return;
+    }
+
+
+    /*
+     * ここが今回の最重要部分。
+     *
+     * DB schema:
+     *
+     * id
+     * project_id
+     * job_type
+     * status
+     * priority
+     * payload
+     * result
+     * error_message
+     * started_at
+     * finished_at
+     * created_at
+     */
+
+    const payload = {
+
+      theme:
+        message,
+
+      research_question:
+        message,
+
+      source:
+        "Research AI Lab",
+
+      requested_at:
+        new Date().toISOString(),
+
+      configuration:{
+
+        autonomous:
+          true,
+
+        background:
+          true,
+
+        rigorous:
+          true,
+
+        no_plausible_lies:
+          true,
+
+        counterexample_search:
+          true,
+
+        proof_strategy:
+          true,
+
+        cross_domain:
+          true
+
+      }
+
+    };
+
+
+    const {
+      data,
+      error
+    } =
+      await client
+        .from(
+          "research_jobs"
+        )
+        .insert({
+
+          project_id:
+            currentProjectId,
+
+          job_type:
+            "research_cycle",
+
+          status:
+            "queued",
+
+          priority:
+            10,
+
+          payload:
+            payload
+
+        })
+        .select(
+          "id,project_id,job_type,status,priority,payload,created_at"
+        )
+        .single();
+
+
+    if(error){
+
+      throw error;
+
+    }
+
+
+    if(!data){
+
+      throw new Error(
+        "研究ジョブの作成結果が返ってきませんでした。"
+      );
+
+    }
+
+
+    currentJob =
+      data;
+
+
+    setProgress(
+      15,
+      "研究ジョブをキューに登録しました"
+    );
+
+
+    setStatus(
+      "研究開始を受け付けました。\n\n" +
+      "状態: queued\n" +
+      "GitHub Actionsのバックグラウンド研究処理を待機しています。\n\n" +
+      "ブラウザを閉じてもジョブはSupabaseに残ります。",
+      "success"
+    );
+
+
+    renderJob(
+      data
+    );
+
+
+    startPolling();
+
+
+  }catch(error){
+
+    console.error(
+      "START RESEARCH ERROR:",
+      error
+    );
+
+    setStatus(
+      "研究開始失敗:\n" +
+      getErrorMessage(error),
+      "error"
+    );
+
+    setProgress(
+      0,
+      "研究開始失敗"
+    );
+
+    researchButton.disabled =
+      false;
+
+    stopButton.disabled =
+      true;
+
+  }
+
+}
+
+
+/* =========================================================
+   ERROR
+========================================================= */
+
+function getErrorMessage(
+  error
+){
+
+  if(!error){
+
+    return "不明なエラー";
+
+  }
+
+  if(
+    error.message
+  ){
+
+    return error.message;
+
+  }
+
+  if(
+    typeof error === "string"
+  ){
+
+    return error;
+
+  }
+
+  try{
+
+    return JSON.stringify(
+      error
+    );
+
+  }catch{
+
+    return String(
+      error
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   POLLING
+========================================================= */
+
+function startPolling(){
+
+  stopPolling();
+
+  refreshJob();
+
+  pollingTimer =
+    setInterval(
+      refreshJob,
+      10000
+    );
+
+}
+
+
+function stopPolling(){
+
+  if(
+    pollingTimer
+  ){
+
+    clearInterval(
+      pollingTimer
+    );
+
+    pollingTimer =
+      null;
+
+  }
+
+}
+
+
+async function refreshJob(){
+
+  try{
+
+    /*
+     * 現在のジョブを取得
+     */
+
+    let query =
+      client
+        .from(
+          "research_jobs"
+        )
+        .select(
+          "id,project_id,job_type,status,priority,payload,result,error_message,started_at,finished_at,created_at"
+        )
+        .eq(
+          "project_id",
+          currentProjectId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:false
+          }
+        )
+        .limit(1);
+
+
+    const {
+      data,
+      error
+    } =
+      await query;
+
+
+    if(error){
+
+      throw error;
+
+    }
+
+
+    if(
+      !data ||
+      !data.length
+    ){
+
+      renderJob(
+        null
+      );
+
+      return;
+
+    }
+
+
+    const job =
+      data[0];
+
+    currentJob =
+      job;
+
+    renderJob(
+      job
+    );
+
+
+    if(
+      job.status ===
+      "queued"
+    ){
+
+      setProgress(
+        15,
+        "キューで待機中..."
+      );
+
+      setStatus(
+        "研究ジョブはキューに登録されています。\n\n" +
+        "GitHub Actionsがバックグラウンドで取得します。",
+        "running"
+      );
+
+      researchButton.disabled =
+        true;
+
+      stopButton.disabled =
+        false;
+
+      return;
+
+    }
+
+
+    if(
+      job.status ===
+      "running"
+    ){
+
+      setProgress(
+        50,
+        "AIが研究を実行中..."
+      );
+
+      setStatus(
+        "AI研究を実行中です。\n\n" +
+        "ブラウザを閉じてもバックグラウンド処理は継続します。",
+        "running"
+      );
+
+      researchButton.disabled =
+        true;
+
+      stopButton.disabled =
+        false;
+
+      return;
+
+    }
+
+
+    if(
+      job.status ===
+      "completed"
+    ){
+
+      setProgress(
+        100,
+        "研究完了"
+      );
+
+      setStatus(
+        "研究が完了しました。",
+        "success"
+      );
+
+      researchButton.disabled =
+        false;
+
+      stopButton.disabled =
+        true;
+
+      stopPolling();
+
+      await loadHistory();
+
+      if(
+        job.result
+      ){
+
+        renderJobResult(
+          job
+        );
+
+      }
+
+      return;
+
+    }
+
+
+    if(
+      job.status ===
+      "cancelled" ||
+      job.status ===
+      "canceled"
+    ){
+
+      setProgress(
+        0,
+        "研究停止"
+      );
+
+      setStatus(
+        "研究を停止しました。",
+        ""
+      );
+
+      researchButton.disabled =
+        false;
+
+      stopButton.disabled =
+        true;
+
+      stopPolling();
+
+      return;
+
+    }
+
+
+    /*
+     * その他の状態
+     */
+
+    setStatus(
+      `研究状態: ${job.status}`,
+      ""
+    );
+
+
+  }catch(error){
+
+    console.error(
+      "JOB POLLING ERROR:",
+      error
+    );
+
+    /*
+     * ポーリングエラーで
+     * 研究ボタン全体を壊さない。
+     */
+
+    setStatus(
+      "ジョブ状態取得エラー:\n" +
+      getErrorMessage(error),
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   STOP RESEARCH
+========================================================= */
+
+async function stopResearch(){
+
+  if(
+    !currentJob ||
+    !currentJob.id
+  ){
+
+    return;
+
+  }
+
+
+  if(
+    ![
+      "queued",
+      "running"
+    ].includes(
+      currentJob.status
+    )
+  ){
+
+    return;
+
+  }
+
+
+  stopButton.disabled =
+    true;
+
+
+  try{
+
+    /*
+     * queuedなら確実に停止可能。
+     *
+     * runningの場合もcancelledへ変更する。
+     */
+
+    const {
+      data,
+      error
+    } =
+      await client
+        .from(
+          "research_jobs"
+        )
+        .update({
+          status:
+            "cancelled"
+        })
+        .eq(
+          "id",
+          currentJob.id
+        )
+        .in(
+          "status",
+          [
+            "queued",
+            "running"
+          ]
+        )
+        .select(
+          "id,status"
+        )
+        .single();
+
+
+    if(error){
+
+      throw error;
+
+    }
+
+
+    currentJob =
+      {
+        ...currentJob,
+        status:
+          data.status
+      };
+
+
+    setProgress(
+      0,
+      "研究停止"
+    );
+
+    setStatus(
+      "研究ジョブを停止しました。",
+      "success"
+    );
+
+    researchButton.disabled =
+      false;
+
+    stopButton.disabled =
+      true;
+
+    stopPolling();
+
+    renderJob(
+      currentJob
+    );
+
+
+  }catch(error){
+
+    console.error(
+      "STOP ERROR:",
+      error
+    );
+
+    stopButton.disabled =
+      false;
+
+    setStatus(
+      "研究停止に失敗:\n" +
+      getErrorMessage(error),
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   RENDER JOB
+========================================================= */
+
+function renderJob(
+  job
+){
+
+  if(!job){
+
+    jobStatus.textContent =
+      "-";
+
+    jobId.textContent =
+      "-";
+
+    jobCreated.textContent =
+      "-";
+
+    jobPriority.textContent =
+      "-";
+
+    return;
+
+  }
+
+
+  jobStatus.textContent =
+    job.status || "-";
+
+  jobId.textContent =
+    job.id || "-";
+
+  jobCreated.textContent =
+    formatDate(
+      job.created_at
+    );
+
+  jobPriority.textContent =
+    job.priority ??
+    "-";
+
+}
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+async function loadHistory(){
+
+  try{
+
+    const {
+      data,
+      error
+    } =
+      await client
+        .from(
+          "research_results"
+        )
+        .select(
+          "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at"
+        )
+        .eq(
+          "project_id",
+          currentProjectId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:false
+          }
+        )
+        .limit(100);
+
+
+    if(error){
+
+      throw error;
+
+    }
+
+
+    const results =
+      data || [];
+
+
+    historyCount.textContent =
+      `${results.length}件`;
+
+
+    renderHistory(
+      historyList,
+      results
+    );
+
+    renderHistory(
+      historyPageList,
+      results
+    );
+
+    renderSaved(
+      results
+    );
+
+
+    if(
+      results.length
+    ){
+
+      renderLatestResult(
+        results[0]
+      );
+
+    }
+
+
+  }catch(error){
+
+    console.error(
+      "HISTORY ERROR:",
+      error
+    );
+
+    historyList.innerHTML =
+      `<div class="empty">
+        履歴取得エラー<br>
+        ${escapeHtml(
+          getErrorMessage(error)
+        )}
+      </div>`;
+
+  }
+
+}
+
+
+/* =========================================================
+   RENDER HISTORY
+========================================================= */
+
+function renderHistory(
+  container,
+  results
+){
+
+  if(!container){
+
+    return;
+
+  }
+
+
+  if(
+    !results.length
+  ){
+
+    container.innerHTML =
+      `<div class="empty">
+        まだ研究結果がありません。
+      </div>`;
+
+    return;
+
+  }
+
+
+  container.innerHTML =
+    results
+      .map(
+        result =>
+          historyItemHtml(
+            result
+          )
+      )
+      .join("");
+
+
+  container
+    .querySelectorAll(
+      "[data-result-id]"
+    )
+    .forEach(
+      element => {
+
+        element.addEventListener(
+          "click",
+          () => {
+
+            const id =
+              element.dataset.resultId;
+
+            const result =
+              results.find(
+                item =>
+                  item.id === id
+              );
+
+            if(result){
+
+              renderLatestResult(
+                result
+              );
+
+              showPage(
+                "research"
+              );
+
+            }
+
+          }
+        );
+
+      }
+    );
+
+}
+
+
+function historyItemHtml(
+  result
+){
+
+  const symbol =
+    symbolForResult(
+      result
+    );
+
+  return `
+    <div
+      class="history-item"
+      data-result-id="${escapeHtml(result.id)}"
+    >
+
+      <div class="history-title">
+
+        <span class="symbol">
+          ${symbol}
+        </span>
+
+        ${escapeHtml(
+          result.title
+        )}
+
+      </div>
+
+      <div class="history-meta">
+
+        信頼度:
+        ${escapeHtml(
+          result.confidence_level
+        )}/5
+
+        ・
+
+        ${escapeHtml(
+          result.status
+        )}
+
+        ・
+
+        ${escapeHtml(
+          formatDate(
+            result.created_at
+          )
+        )}
+
+      </div>
+
+    </div>
+  `;
+
+}
+
+
+/* =========================================================
+   SAVED
+========================================================= */
+
+function renderSaved(
+  results
+){
+
+  const saved =
+    results.filter(
+      result =>
+        result.is_human_saved === true ||
+        result.evaluation === "⭕️" ||
+        result.evaluation === "⭕"
+    );
+
+
+  if(
+    !saved.length
+  ){
+
+    savedList.innerHTML =
+      `<div class="empty">
+        保存された研究はありません。
+      </div>`;
+
+    return;
+
+  }
+
+
+  renderHistory(
+    savedList,
+    saved
+  );
+
+}
+
+
+/* =========================================================
+   LATEST RESULT
+========================================================= */
+
+function renderLatestResult(
+  result
+){
+
+  if(!result){
+
+    return;
+
+  }
+
+
+  latestCard.style.display =
+    "block";
+
+  latestTitle.textContent =
+    result.title || "研究結果";
+
+  latestMeta.textContent =
+    `${symbolForResult(result)}  ` +
+    `評価: ${result.evaluation || "△"}  ` +
+    `信頼度: ${result.confidence_level ?? 0}/5  ` +
+    `・ ${formatDate(result.created_at)}`;
+
+
+  const content =
+    contentObject(
+      result
+    );
+
+
+  latestContent.innerHTML = `
+
+    <div class="detail-section">
+
+      <h3>仮説</h3>
+
+      <p>
+        ${escapeHtml(
+          result.hypothesis || "-"
+        )}
+      </p>
+
+    </div>
+
+
+    <div class="detail-section">
+
+      <h3>研究内容</h3>
+
+      <pre>${escapeHtml(
+        JSON.stringify(
+          content,
+          null,
+          2
+        )
+      )}</pre>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =========================================================
+   JOB RESULT
+========================================================= */
+
+function renderJobResult(
+  job
+){
+
+  if(
+    !job ||
+    !job.result
+  ){
+
+    return;
+
+  }
+
+  latestTitle.textContent =
+    job.result.title ||
+    "研究完了";
+
+  latestMeta.textContent =
+    `ジョブ完了: ${job.id}`;
+
+  latestContent.innerHTML = `
+
+    <div class="detail-section">
+
+      <h3>研究結果</h3>
+
+      <pre>${escapeHtml(
+        JSON.stringify(
+          job.result,
+          null,
+          2
+        )
+      )}</pre>
+
+    </div>
+
+  `;
+
+  latestCard.style.display =
+    "block";
+
+}
+
+
+/* =========================================================
+   ALL JOBS
+========================================================= */
+
+async function loadJobs(){
+
+  try{
+
+    const {
+      data,
+      error
+    } =
+      await client
+        .from(
+          "research_jobs"
+        )
+        .select(
+          "id,project_id,job_type,status,priority,payload,result,error_message,started_at,finished_at,created_at"
+        )
+        .eq(
+          "project_id",
+          currentProjectId
+        )
+        .order(
+          "created_at",
+          {
+            ascending:false
+          }
+        )
+        .limit(100);
+
+
+    if(error){
+
+      throw error;
+
+    }
+
+
+    if(
+      !data ||
+      !data.length
+    ){
+
+      allJobs.innerHTML =
+        `<div class="empty">
+          研究ジョブはありません。
+        </div>`;
+
+      return;
+
+    }
+
+
+    allJobs.innerHTML =
+      data
+        .map(
+          job => `
+
+            <div class="history-item">
+
+              <div class="history-title">
+
+                ${escapeHtml(
+                  job.status
+                )}
+
+                ・
+
+                ${escapeHtml(
+                  job.job_type
+                )}
+
+              </div>
+
+              <div class="history-meta">
+
+                ID:
+                ${escapeHtml(
+                  job.id
+                )}
+
+                <br>
+
+                優先度:
+                ${escapeHtml(
+                  job.priority
+                )}
+
+                ・
+
+                ${escapeHtml(
+                  formatDate(
+                    job.created_at
+                  )
+                )}
+
+              </div>
+
+            </div>
+
+          `
+        )
+        .join("");
+
+
+  }catch(error){
+
+    allJobs.innerHTML =
+      `<div class="empty">
+        ジョブ取得エラー<br>
+        ${escapeHtml(
+          getErrorMessage(error)
+        )}
+      </div>`;
+
+  }
+
+}
+
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+
+function showPage(
+  page
+){
+
+  document
+    .querySelectorAll(
+      ".page"
+    )
+    .forEach(
+      element => {
+
+        element.classList.remove(
+          "active"
+        );
+
+      }
+    );
+
+
+  const target =
+    document.getElementById(
+      `page-${page}`
+    );
+
+  if(target){
+
+    target.classList.add(
+      "active"
+    );
+
+  }
+
+
+  document
+    .querySelectorAll(
+      ".nav button"
+    )
+    .forEach(
+      button => {
+
+        button.classList.toggle(
+          "active",
+          button.dataset.page === page
+        );
+
+      }
+    );
+
+
+  if(
+    page === "history"
+  ){
+
+    loadHistory();
+
+  }
+
+  if(
+    page === "saved"
+  ){
+
+    loadHistory();
+
+  }
+
+  if(
+    page === "jobs"
+  ){
+
+    loadJobs();
+
+  }
+
+}
+
+
+document
+  .querySelectorAll(
+    ".nav button"
+  )
+  .forEach(
+    button => {
+
+      button.addEventListener(
+        "click",
+        () => {
+
+          showPage(
+            button.dataset.page
+          );
+
+        }
+      );
+
+    }
+  );
+
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+researchButton.addEventListener(
+  "click",
+  startResearch
+);
+
+stopButton.addEventListener(
+  "click",
+  stopResearch
+);
+
+clearButton.addEventListener(
+  "click",
+  () => {
+
+    questionInput.value =
+      "";
+
+    setStatus(
+      "待機中"
+    );
+
+    setProgress(
+      0,
+      "待機中"
+    );
+
+  }
+);
+
+
+/* =========================================================
+   STARTUP
+========================================================= */
+
+(async function init(){
+
+  await checkConnection();
+
+  await loadHistory();
+
+  await refreshJob();
+
+})();
+
+</script>
 
 </body>
 </html>
