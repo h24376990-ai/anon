@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#070b16">
+<title>Research AI Lab</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+<div class="app">
+
+<aside class="sidebar">
+
+<div class="logo">
+Research <span>AI</span>
+</div>
+
+<nav class="nav">
+
+<button class="nav-button active" data-page="research">
+⌂ <span>研究</span>
+</button>
+
+<button class="nav-button" data-page="history">
+◉ <span>履歴</span>
+</button>
+
+<button class="nav-button" data-page="saved">
+★ <span>保存</span>
+</button>
+
+<button class="nav-button" data-page="jobs">
+⚙ <span>ジョブ</span>
+</button>
+
+<button class="nav-button" data-page="models">
+△ <span>3Dモデル</span>
+</button>
+
+<button class="nav-button" data-page="memory">
+▣ <span>研究記憶</span>
+</button>
+
+<button class="nav-button" data-page="routes">
+↗ <span>探索ルート</span>
+</button>
+
+</nav>
+</aside>
+
+
+<main class="main">
+
+<header class="top">
+
+<div>
+<div class="eyebrow">
+AUTONOMOUS MATHEMATICAL RESEARCH
+</div>
+
+<h1>数学研究ラボ</h1>
+
+<p>
+ブラウザとは独立してバックグラウンド研究を実行
+</p>
+</div>
+
+<div class="connection">
+<span id="connectionDot" class="dot"></span>
+<span id="connectionText">接続確認中...</span>
+</div>
+
+</header>
+
+
+<section id="page-research" class="page active">
+
+<div class="grid">
+
+
+<div class="card">
+
+<h2>新しい研究</h2>
+
+<textarea
+id="questionInput"
+placeholder="研究したい数学的問題・仮説・疑問を入力してください"
+></textarea>
+
+
+<div class="buttons">
+
+<button
+id="researchButton"
+class="button primary"
+>
+▶ 研究開始
+</button>
+
+<button
+id="stopButton"
+class="button danger"
+disabled
+>
+■ 研究停止
+</button>
+
+<button
+id="clearButton"
+class="button"
+>
+入力を消去
+</button>
+
+</div>
+
+
+<div id="statusBox" class="status"></div>
+
+
+<div id="jobPanel" class="job hidden">
+
+<div class="job-title">
+
+<b>バックグラウンドジョブ</b>
+
+<span id="jobStatus" class="badge">
+QUEUED
+</span>
+
+</div>
+
+<code id="jobId"></code>
+
+
+<div class="progress">
+<div id="progressValue"></div>
+</div>
+
+
+<div class="progress-info">
+
+<span id="progressText">
+待機中
+</span>
+
+<span id="progressPercent">
+0%
+</span>
+
+</div>
+
+
+<div class="times">
+
+<span>
+作成
+<b id="jobCreated">—</b>
+</span>
+
+<span>
+開始
+<b id="jobStarted">—</b>
+</span>
+
+<span>
+終了
+<b id="jobFinished">—</b>
+</span>
+
+</div>
+
+</div>
+
+</div>
+
+
+<div class="card detail-card">
+
+<h2>研究結果</h2>
+
+<div id="detail">
+
+<div class="empty">
+結果を選択すると詳細が表示されます。
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section id="page-history" class="page">
+
+<div class="card">
+
+<div class="section-head">
+
+<h2>研究履歴</h2>
+
+<span id="historyCount">
+0件
+</span>
+
+</div>
+
+<div id="historyList"></div>
+
+</div>
+
+</section>
+
+
+<section id="page-saved" class="page">
+
+<div class="card">
+
+<h2>保存した研究</h2>
+
+<div id="savedList"></div>
+
+</div>
+
+</section>
+
+
+<section id="page-jobs" class="page">
+
+<div class="card">
+
+<h2>研究ジョブ</h2>
+
+<div id="jobsList"></div>
+
+</div>
+
+</section>
+
+
+<section id="page-models" class="page">
+
+<div class="card">
+
+<h2>3D数学モデル</h2>
+
+<div class="model-grid">
+
+<div class="model">
+∞
+<b>曲面・多様体</b>
+</div>
+
+<div class="model">
+ζ
+<b>ゼータ関数</b>
+</div>
+
+<div class="model">
+◌
+<b>研究ネットワーク</b>
+</div>
+
+</div>
+
+</div>
+
+</section>
+
+
+<section id="page-memory" class="page">
+
+<div class="card">
+
+<h2>研究記憶</h2>
+
+<div id="memoryList"></div>
+
+</div>
+
+</section>
+
+
+<section id="page-routes" class="page">
+
+<div class="card">
+
+<h2>探索ルート</h2>
+
+<div id="routesList"></div>
+
+</div>
+
+</section>
+
+
+</main>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
