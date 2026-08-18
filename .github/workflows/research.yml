@@ -4,42 +4,42 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
 
 jobs:
+
   research:
-    name: AI Research and Save
+
+    name: AI Research Worker
+
     runs-on: ubuntu-latest
+
     timeout-minutes: 15
 
     steps:
 
-      # ========================================
-      # STEP 17-1
-      # queued の研究ジョブを取得
-      # ========================================
       - name: Get queued research job
+
         id: get_job
+
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -e
 
-          echo "Connecting to Supabase..."
+        run: |
+
+          set -e
 
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          echo "Searching for queued research job..."
-
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/job.json \
+            --output /tmp/jobs.json \
             --write-out "%{http_code}" \
             --request GET \
             --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=1" \
@@ -49,14 +49,116 @@ jobs:
 
           echo "HTTP status: ${HTTP_STATUS}"
 
-          cat /tmp/job.json
-
           if [ "${HTTP_STATUS}" != "200" ]; then
-            echo "Failed to get queued research job."
+            cat /tmp/jobs.json
             exit 1
           fi
 
           python3 - <<'PY'
+
+          import json
+
+          with open(
+              "/tmp/jobs.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              jobs = json.load(f)
+
+          if not jobs:
+
+              print("Queue empty.")
+
+              with open(
+                  "/tmp/job_exists",
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+                  f.write("false")
+
+          else:
+
+              job = jobs[0]
+
+              print(
+                  "Queued job:",
+                  job["id"]
+              )
+
+              with open(
+                  "/tmp/job.json",
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+                  json.dump(
+                      job,
+                      f,
+                      ensure_ascii=False
+                  )
+
+              with open(
+                  "/tmp/job_exists",
+                  "w",
+                  encoding="utf-8"
+              ) as f:
+                  f.write("true")
+
+          PY
+
+          echo \
+            "job_exists=$(cat /tmp/job_exists)" \
+            >> "$GITHUB_OUTPUT"
+
+
+      - name: Start job
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(
+            python3 -c \
+            'import json;print(json.load(open("/tmp/job.json"))["id"])'
+          )
+
+          STARTED_AT=$(
+            date -u +"%Y-%m-%dT%H:%M:%SZ"
+          )
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --request PATCH \
+            --url \
+            "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
+            --header \
+            "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Content-Type: application/json" \
+            --data \
+            "{\"status\":\"running\",\"started_at\":\"${STARTED_AT}\"}"
+
+
+      - name: Build research prompt
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        run: |
+
+          python3 - <<'PY'
+
           import json
 
           with open(
@@ -64,226 +166,133 @@ jobs:
               "r",
               encoding="utf-8"
           ) as f:
-              jobs = json.load(f)
+              job = json.load(f)
 
-          if not jobs:
-              print("No queued research job found.")
-              print("Queue is empty. Nothing to do.")
-              print("has_job=false")
+          payload =
+              job.get("payload", {})
 
-              with open(
-                  "/tmp/job_exists.txt",
-                  "w",
-                  encoding="utf-8"
-              ) as f:
-                  f.write("false")
-
-              raise SystemExit(0)
-
-          job = jobs[0]
-
-          print("")
-          print("Queued job found!")
-          print("Job ID:", job["id"])
-          print("Job type:", job.get("job_type"))
-          print("Project ID:", job.get("project_id"))
-          print("Status:", job.get("status"))
-          print("Payload:", job.get("payload"))
-
-          with open(
-              "/tmp/research_job.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              json.dump(
-                  job,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
+          theme =
+              payload.get(
+                  "theme",
+                  ""
               )
 
-          with open(
-              "/tmp/job_exists.txt",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              f.write("true")
-          PY
-
-          JOB_EXISTS=$(cat /tmp/job_exists.txt)
-
-          echo "Job exists: ${JOB_EXISTS}"
-
-          echo "job_exists=${JOB_EXISTS}" >> "${GITHUB_OUTPUT}"
-
-
-      # ========================================
-      # STEP 17-2
-      # queued → running
-      # ========================================
-      - name: Start research job
-        if: steps.get_job.outputs.job_exists == 'true'
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          set -e
-
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
-          JOB_ID=$(python3 - <<'PY'
-          import json
-
-          with open(
-              "/tmp/research_job.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              job = json.load(f)
-
-          print(job["id"])
-          PY
-          )
-
-          echo "Starting research job..."
-          echo "Job ID: ${JOB_ID}"
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output /tmp/start_response.json \
-            --write-out "%{http_code}" \
-            --request PATCH \
-            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data '{"status":"running"}')
-
-          echo "Start job HTTP status: ${HTTP_STATUS}"
-
-          cat /tmp/start_response.json
-
-          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-            echo "Failed to change job to running."
-            exit 1
-          fi
-
-          echo ""
-          echo "Research job is now RUNNING."
-
-
-      # ========================================
-      # STEP 17-3
-      # AI研究プロンプト作成
-      # ========================================
-      - name: Build research prompt
-        if: steps.get_job.outputs.job_exists == 'true'
-        run: |
-          set -e
-
-          python3 - <<'PY'
-          import json
-
-          with open(
-              "/tmp/research_job.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              job = json.load(f)
-
-          payload = job.get("payload", {})
-
-          theme = payload.get(
-              "theme",
-              "Riemann Hypothesis"
-          )
-
           prompt = f"""
-          You are the research engine of an autonomous mathematics research laboratory.
 
-          Research theme:
-          {theme}
+You are the research engine of an autonomous mathematical research laboratory.
 
-          Research configuration:
-          {json.dumps(payload, ensure_ascii=False, indent=2)}
+Research theme:
 
-          Your task is to generate ONE serious mathematical research hypothesis.
+{theme}
 
-          IMPORTANT RULES:
+Return ONLY valid JSON.
 
-          1. Never claim an unproven statement is proven.
-          2. Clearly separate known facts from hypotheses.
-          3. Never invent papers, authors, citations, theorems, or calculations.
-          4. Numerical evidence is NOT a proof.
-          5. Try to find counterexamples to your own idea.
-          6. Consider proof by contradiction.
-          7. Consider direct proof.
-          8. Consider the contrapositive when meaningful.
-          9. Consider special cases and boundary cases.
-          10. Consider connections to other mathematical fields.
-          11. Cross-domain analogies are hypothesis-generation tools only.
-          12. Do not pretend that an analogy proves anything.
-          13. Identify the biggest logical gap in the proposed approach.
-          14. Suggest concrete next experiments or proof steps.
-          15. Prefer a genuinely different research direction over a trivial rewording.
+Required keys:
 
-          Return ONLY valid JSON.
+title
+hypothesis
+research_question
+known_facts
+assumptions
+approach
+proof_strategy
+counterexample_strategy
+cross_domain_connection
+critical_gap
+next_steps
+status
+confidence
 
-          Use exactly this structure:
+Allowed status:
 
-          {{
-            "title": "research title",
-            "research_question": "precise research question",
-            "hypothesis": "research hypothesis",
-            "known_facts": [],
-            "assumptions": [],
-            "approach": [],
-            "proof_strategy": [],
-            "counterexample_strategy": [],
-            "cross_domain_connection": [],
-            "critical_gap": "largest unresolved issue",
-            "next_steps": [],
-            "confidence": 0.0,
-            "status": "needs_verification"
-          }}
+candidate
+promising
+uncertain
+rejected
+needs_verification
 
-          Allowed status values:
+confidence must be between 0 and 1.
 
-          candidate
-          promising
-          uncertain
-          rejected
-          needs_verification
+Rules:
 
-          Confidence must be between 0 and 1.
-          """
+1. Never claim an unproven statement is proven.
+2. Separate known facts from hypotheses.
+3. Never invent citations.
+4. Numerical evidence is not proof.
+5. Search for counterexamples.
+6. Identify the biggest logical gap.
+7. Suggest concrete next mathematical steps.
+8. Prefer a genuinely different research direction.
+
+"""
 
           with open(
               "/tmp/prompt.txt",
               "w",
               encoding="utf-8"
           ) as f:
-              f.write(prompt)
+              f.write(
+                  prompt
+              )
 
-          print("Research prompt created.")
           PY
 
 
-      # ========================================
-      # STEP 17-4
-      # OpenRouter
-      # ========================================
-      - name: Call OpenRouter
+      - name: Check cancellation before AI
+
         if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(
+            python3 -c \
+            'import json;print(json.load(open("/tmp/job.json"))["id"])'
+          )
+
+          STATUS=$(
+            curl \
+              --silent \
+              --fail \
+              --url \
+              "${BASE_URL}/rest/v1/research_jobs?select=status&id=eq.${JOB_ID}" \
+              --header \
+              "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header \
+              "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" |
+            python3 -c \
+            'import json,sys; a=json.load(sys.stdin); print(a[0]["status"] if a else "missing")'
+          )
+
+          echo "Current job status: ${STATUS}"
+
+          if [ "${STATUS}" != "running" ]; then
+            echo "Job was cancelled."
+            exit 1
+          fi
+
+
+      - name: Call OpenRouter
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
         run: |
+
           set -e
 
           python3 - <<'PY'
+
           import json
 
           prompt = open(
@@ -292,253 +301,244 @@ jobs:
           ).read()
 
           request = {
-              "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+
+              "model":
+                  "nvidia/nemotron-3-ultra-550b-a55b:free",
+
               "messages": [
+
                   {
-                      "role": "system",
-                      "content": (
-                          "You are a rigorous mathematics research AI. "
-                          "Return valid JSON only."
-                      )
+                      "role":
+                          "system",
+
+                      "content":
+                          "You are a rigorous mathematics research AI. Return valid JSON only."
                   },
+
                   {
-                      "role": "user",
-                      "content": prompt
+                      "role":
+                          "user",
+
+                      "content":
+                          prompt
                   }
+
               ],
-              "temperature": 0.2,
-              "max_tokens": 10000
+
+              "temperature":
+                  0.2,
+
+              "max_tokens":
+                  10000
           }
 
           with open(
-              "/tmp/openrouter_request.json",
+              "/tmp/request.json",
               "w",
               encoding="utf-8"
           ) as f:
+
               json.dump(
                   request,
                   f,
                   ensure_ascii=False
               )
+
           PY
 
-          echo "Calling OpenRouter..."
 
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/openrouter_response.json \
+            --output /tmp/ai.json \
             --write-out "%{http_code}" \
             --request POST \
-            --url "https://openrouter.ai/api/v1/chat/completions" \
-            --header "Authorization: Bearer ${OPENROUTER_API_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "HTTP-Referer: https://github.com/" \
-            --header "X-Title: Math Research Lab" \
-            --data-binary @/tmp/openrouter_request.json)
+            --url \
+            "https://openrouter.ai/api/v1/chat/completions" \
+            --header \
+            "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+            --header \
+            "Content-Type: application/json" \
+            --data-binary \
+            @/tmp/request.json)
 
-          echo "OpenRouter HTTP status: ${HTTP_STATUS}"
+          echo \
+            "OpenRouter HTTP status: ${HTTP_STATUS}"
 
-          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-            echo "OpenRouter request failed."
-            cat /tmp/openrouter_response.json
+
+          if [
+            "${HTTP_STATUS}" -lt 200
+          ] || [
+            "${HTTP_STATUS}" -ge 300
+          ]; then
+
+            cat /tmp/ai.json
+
             exit 1
+
           fi
 
+
           python3 - <<'PY'
+
           import json
 
           with open(
-              "/tmp/openrouter_response.json",
+              "/tmp/ai.json",
               "r",
               encoding="utf-8"
           ) as f:
               data = json.load(f)
 
-          choices = data.get("choices", [])
-
-          if not choices:
-              raise SystemExit(
-                  "OpenRouter returned no choices."
-              )
-
-          content = (
-              choices[0]
-              .get("message", {})
-              .get("content", "")
-          )
-
-          if not content:
-              raise SystemExit(
-                  "OpenRouter returned empty content."
-              )
+          content =
+              data[
+                  "choices"
+              ][0][
+                  "message"
+              ][
+                  "content"
+              ]
 
           with open(
-              "/tmp/ai_result.txt",
+              "/tmp/ai_text.txt",
               "w",
               encoding="utf-8"
           ) as f:
-              f.write(content)
+              f.write(
+                  content
+              )
 
-          print("AI response received.")
+          print(
+              "AI response received."
+          )
+
           PY
 
 
-      # ========================================
-      # STEP 17-5
-      # AI結果の検証
-      # ========================================
       - name: Validate AI result
+
         if: steps.get_job.outputs.job_exists == 'true'
+
         run: |
+
           set -e
 
           python3 - <<'PY'
+
           import json
           import re
 
           raw = open(
-              "/tmp/ai_result.txt",
+              "/tmp/ai_text.txt",
               encoding="utf-8"
           ).read().strip()
 
-          raw = re.sub(
-              r"^```json\s*",
-              "",
-              raw,
-              flags=re.IGNORECASE
-          )
+          match =
+              re.search(
+                  r"\{.*\}",
+                  raw,
+                  re.S
+              )
 
-          raw = re.sub(
-              r"^```\s*",
-              "",
-              raw
-          )
-
-          raw = re.sub(
-              r"\s*```$",
-              "",
-              raw
-          )
-
-          result = json.loads(raw)
-
-          required = [
-              "title",
-              "research_question",
-              "hypothesis",
-              "known_facts",
-              "assumptions",
-              "approach",
-              "proof_strategy",
-              "counterexample_strategy",
-              "cross_domain_connection",
-              "critical_gap",
-              "next_steps",
-              "confidence",
-              "status"
-          ]
-
-          for field in required:
-              if field not in result:
-                  raise SystemExit(
-                      "Missing field: " + field
-                  )
-
-          confidence = float(
-              result["confidence"]
-          )
-
-          if confidence < 0 or confidence > 1:
+          if not match:
               raise SystemExit(
-                  "Confidence must be between 0 and 1."
+                  "AI JSON not found."
               )
 
-          with open(
-              "/tmp/validated_result.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              json.dump(
-                  result,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
+          result =
+              json.loads(
+                  match.group(0)
               )
 
-          print("")
-          print("AI result validation successful.")
-          print("Title:", result["title"])
-          print("Status:", result["status"])
-          print("Confidence:", result["confidence"])
-          PY
+          confidence =
+              float(
+                  result.get(
+                      "confidence",
+                      0
+                  ) or 0
+              )
 
+          confidence =
+              max(
+                  0,
+                  min(
+                      1,
+                      confidence
+                  )
+              )
 
-      # ========================================
-      # STEP 17-6
-      # research_results 用データ作成
-      # ========================================
-      - name: Prepare research result
-        if: steps.get_job.outputs.job_exists == 'true'
-        run: |
-          set -e
+          confidence_level =
+              round(
+                  confidence * 5
+              )
 
-          python3 - <<'PY'
-          import json
+          status =
+              str(
+                  result.get(
+                      "status",
+                      ""
+                  )
+              ).lower()
+
+          if (
+              status in
+              [
+                  "promising",
+                  "candidate"
+              ]
+              and
+              confidence >= 0.8
+          ):
+
+              evaluation = "⭕️"
+
+          elif status == "rejected":
+
+              evaluation = "❌"
+
+          else:
+
+              evaluation = "△"
+
 
           with open(
-              "/tmp/research_job.json",
+              "/tmp/job.json",
               "r",
               encoding="utf-8"
           ) as f:
               job = json.load(f)
 
-          with open(
-              "/tmp/validated_result.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              result = json.load(f)
-
-          confidence = float(
-              result.get("confidence", 0)
-          )
-
-          confidence = max(
-              0,
-              min(1, confidence)
-          )
-
-          # DB制約:
-          # confidence_level >= 0
-          # confidence_level <= 5
-          confidence_level = round(
-              confidence * 5
-          )
-
-          confidence_level = max(
-              0,
-              min(5, confidence_level)
-          )
-
-          # 未検証の研究は△
-          evaluation = "△"
 
           content = {
+
               "research_question":
-                  result.get("research_question"),
+                  result.get(
+                      "research_question"
+                  ),
 
               "known_facts":
-                  result.get("known_facts", []),
+                  result.get(
+                      "known_facts",
+                      []
+                  ),
 
               "assumptions":
-                  result.get("assumptions", []),
+                  result.get(
+                      "assumptions",
+                      []
+                  ),
 
               "approach":
-                  result.get("approach", []),
+                  result.get(
+                      "approach",
+                      []
+                  ),
 
               "proof_strategy":
-                  result.get("proof_strategy", []),
+                  result.get(
+                      "proof_strategy",
+                      []
+                  ),
 
               "counterexample_strategy":
                   result.get(
@@ -553,33 +553,48 @@ jobs:
                   ),
 
               "critical_gap":
-                  result.get("critical_gap"),
+                  result.get(
+                      "critical_gap"
+                  ),
 
               "next_steps":
-                  result.get("next_steps", []),
-
-              "ai_status":
-                  result.get("status"),
-
-              "ai_confidence":
-                  result.get("confidence"),
+                  result.get(
+                      "next_steps",
+                      []
+                  ),
 
               "source_job_id":
-                  job.get("id"),
+                  job["id"],
 
               "research_configuration":
-                  job.get("payload", {})
+                  job.get(
+                      "payload",
+                      {}
+                  )
+
           }
 
+
           record = {
+
               "project_id":
                   job["project_id"],
 
               "title":
-                  result["title"],
+                  str(
+                      result.get(
+                          "title",
+                          "AI研究回答"
+                      )
+                  ),
 
               "hypothesis":
-                  result["hypothesis"],
+                  str(
+                      result.get(
+                          "hypothesis",
+                          ""
+                      )
+                  ),
 
               "content":
                   json.dumps(
@@ -600,196 +615,194 @@ jobs:
                   False
           }
 
+
           with open(
-              "/tmp/research_result_record.json",
+              "/tmp/result.json",
               "w",
               encoding="utf-8"
           ) as f:
+
               json.dump(
                   record,
                   f,
                   ensure_ascii=False
               )
 
-          print("Prepared research_results record.")
+
           print(
-              "Project ID:",
-              record["project_id"]
+              "Prepared research result."
           )
-          print(
-              "Title:",
-              record["title"]
-          )
-          print(
-              "AI confidence:",
-              confidence
-          )
-          print(
-              "DB confidence_level:",
-              confidence_level
-          )
+
           print(
               "Evaluation:",
               evaluation
           )
+
           print(
-              "Status:",
-              record["status"]
+              "Confidence level:",
+              confidence_level
           )
+
           PY
 
 
-      # ========================================
-      # STEP 17-7
-      # research_results 保存
-      # ========================================
-      - name: Save research result
+      - name: Save result unless cancelled
+
         if: steps.get_job.outputs.job_exists == 'true'
+
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
         run: |
+
           set -e
 
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          echo "Saving research result to Supabase..."
+          JOB_ID=$(
+            python3 -c \
+            'import json;print(json.load(open("/tmp/job.json"))["id"])'
+          )
+
+
+          STATUS=$(
+            curl \
+              --silent \
+              --fail \
+              --url \
+              "${BASE_URL}/rest/v1/research_jobs?select=status&id=eq.${JOB_ID}" \
+              --header \
+              "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              --header \
+              "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" |
+            python3 -c \
+            'import json,sys; print(json.load(sys.stdin)[0]["status"])'
+          )
+
+
+          if [
+            "${STATUS}" != "running"
+          ]; then
+
+            echo \
+              "Job was cancelled. Result will NOT be saved."
+
+            exit 0
+
+          fi
+
 
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/save_response.json \
+            --output /tmp/save.json \
             --write-out "%{http_code}" \
             --request POST \
-            --url "${BASE_URL}/rest/v1/research_results" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data-binary @/tmp/research_result_record.json)
+            --url \
+            "${BASE_URL}/rest/v1/research_results" \
+            --header \
+            "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Content-Type: application/json" \
+            --data-binary \
+            @/tmp/result.json)
 
-          echo "Supabase insert HTTP status: ${HTTP_STATUS}"
 
-          cat /tmp/save_response.json
+          echo \
+            "Supabase insert HTTP status: ${HTTP_STATUS}"
 
-          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-            echo "Failed to save research result."
+
+          cat /tmp/save.json
+
+
+          if [
+            "${HTTP_STATUS}" -lt 200
+          ] || [
+            "${HTTP_STATUS}" -ge 300
+          ]; then
+
             exit 1
+
           fi
 
-          echo ""
-          echo "========================================"
-          echo "RESEARCH RESULT SAVED SUCCESSFULLY"
-          echo "========================================"
+
+          echo \
+            "RESEARCH RESULT SAVED SUCCESSFULLY"
 
 
-      # ========================================
-      # STEP 17-8
-      # running → completed
-      # ========================================
-      - name: Complete research job
-        if: steps.get_job.outputs.job_exists == 'true'
+      - name: Complete job
+
+        if: steps.get_job.outputs.job_exists == 'true' && success()
+
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
         run: |
+
           set -e
 
           BASE_URL="${SUPABASE_URL%/}"
           BASE_URL="${BASE_URL%/rest/v1}"
 
-          JOB_ID=$(python3 - <<'PY'
-          import json
-
-          with open(
-              "/tmp/research_job.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              job = json.load(f)
-
-          print(job["id"])
-          PY
+          JOB_ID=$(
+            python3 -c \
+            'import json;print(json.load(open("/tmp/job.json"))["id"])'
           )
 
-          echo "Completing research job..."
-          echo "Job ID: ${JOB_ID}"
 
-          python3 - <<'PY'
-          import json
-
-          with open(
-              "/tmp/validated_result.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-              result = json.load(f)
-
-          output = {
-              "title": result.get("title"),
-              "status": result.get("status"),
-              "confidence": result.get("confidence"),
-              "research_question": result.get(
-                  "research_question"
-              )
-          }
-
-          with open(
-              "/tmp/job_result.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              json.dump(
-                  output,
-                  f,
-                  ensure_ascii=False
-              )
-          PY
-
-          HTTP_STATUS=$(curl \
+          curl \
             --silent \
             --show-error \
-            --output /tmp/complete_response.json \
-            --write-out "%{http_code}" \
+            --fail \
             --request PATCH \
-            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data-binary @- <<EOF
-          {
-            "status": "completed",
-            "result": $(cat /tmp/job_result.json)
-          }
-          EOF
+            --url \
+            "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
+            --header \
+            "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Content-Type: application/json" \
+            --data \
+            "{\"status\":\"completed\",\"finished_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+
+
+      - name: Mark failed
+
+        if: steps.get_job.outputs.job_exists == 'true' && failure()
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(
+            python3 -c \
+            'import json;print(json.load(open("/tmp/job.json"))["id"])'
           )
 
-          echo "Supabase update HTTP status: ${HTTP_STATUS}"
 
-          cat /tmp/complete_response.json
-
-          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
-            echo "Failed to complete research job."
-            exit 1
-          fi
-
-          echo ""
-          echo "========================================"
-          echo "RESEARCH JOB COMPLETED"
-          echo "========================================"
-
-
-      # ========================================
-      # STEP 17-9
-      # キューが空の場合の正常終了メッセージ
-      # ========================================
-      - name: Queue status
-        if: steps.get_job.outputs.job_exists != 'true'
-        run: |
-          echo "========================================"
-          echo "NO QUEUED RESEARCH JOB"
-          echo "========================================"
-          echo "The queue is currently empty."
-          echo "This scheduled run completed normally."
+          curl \
+            --silent \
+            --show-error \
+            --request PATCH \
+            --url \
+            "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
+            --header \
+            "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header \
+            "Content-Type: application/json" \
+            --data \
+            "{\"status\":\"failed\",\"error_message\":\"GitHub Actions research worker failed\",\"finished_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+            || true
