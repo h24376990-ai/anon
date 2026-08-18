@@ -9,7 +9,7 @@
    ========================================================= */
 
 const SUPABASE_URL =
-  "https://beadajbimgpephqszbfy.supabase co";
+  "https://beadajbimgpephqszbfy.supabase.co";
 
 const SUPABASE_PUBLISHABLE_KEY =
   "sb_publishable_s5kiFZVJ9jXyOgS-j2pS-g_7Kj1IeC8";
