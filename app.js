@@ -9,10 +9,10 @@
    ========================================================= */
 
 const SUPABASE_URL =
-  "ここにSupabase URL";
+  "https://beadajbimgpephqszbfy.supabase.co";
 
 const SUPABASE_PUBLISHABLE_KEY =
-  "ここにpublishable key または anon public key";
+  "sb_publishable_s5kiFZVJ9jXyOgS-j2pS-g_7Kj1IeC8";
 
 
 const PROJECT_ID =
