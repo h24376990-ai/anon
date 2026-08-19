@@ -4,16 +4,22 @@ on:
   workflow_dispatch:
 
   schedule:
-    # GitHub Actionsの仕様上、5分より短いcronにはできません。
     - cron: "*/5 * * * *"
 
 permissions:
   contents: read
 
+# 同じWorkerが同時に走って同じジョブを取るのを防ぐ
+concurrency:
+  group: math-research-worker
+  cancel-in-progress: false
+
 jobs:
 
   research:
-    name: AI Research Worker
+
+    name: Autonomous Mathematics Research Worker
+
     runs-on: ubuntu-latest
 
     timeout-minutes: 15
@@ -21,31 +27,19 @@ jobs:
     steps:
 
       # =========================================================
-      # 1. 基本準備
+      # 1. キューから最優先ジョブを1件取得
       # =========================================================
 
-      - name: Initialize
-        run: |
-          set -e
+      - name: Get queued research job
 
-          echo "======================================"
-          echo " Research AI Lab Worker"
-          echo "======================================"
+        id: get_job
 
-          python3 --version
-          curl --version | head -1
-
-
-      # =========================================================
-      # 2. キューからジョブ取得
-      # =========================================================
-
-      - name: Get queued research jobs
-        id: get_jobs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
         run: |
+
           set -e
 
           BASE_URL="${SUPABASE_URL%/}"
@@ -57,7 +51,7 @@ jobs:
             --output /tmp/jobs.json \
             --write-out "%{http_code}" \
             --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=5" \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=1" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json")
@@ -70,45 +64,1075 @@ jobs:
           fi
 
           python3 <<'PY'
+
           import json
 
           with open("/tmp/jobs.json", "r", encoding="utf-8") as f:
               jobs = json.load(f)
 
-          print("Queued jobs:", len(jobs))
+          if not jobs:
 
-          with open("/tmp/job_exists", "w") as f:
-              f.write("true" if jobs else "false")
+              print("Queue empty.")
 
-          with open("/tmp/jobs_count", "w") as f:
-              f.write(str(len(jobs)))
+              with open("/tmp/job_exists", "w") as f:
+                  f.write("false")
+
+          else:
+
+              job = jobs[0]
+
+              print("Queued job:", job["id"])
+
+              with open("/tmp/job.json", "w", encoding="utf-8") as f:
+                  json.dump(
+                      job,
+                      f,
+                      ensure_ascii=False
+                  )
+
+              with open("/tmp/job_exists", "w") as f:
+                  f.write("true")
+
           PY
 
           echo "job_exists=$(cat /tmp/job_exists)" >> "$GITHUB_OUTPUT"
-          echo "jobs_count=$(cat /tmp/jobs_count)" >> "$GITHUB_OUTPUT"
 
 
       # =========================================================
-      # 3. キューが空なら終了
+      # 2. ジョブ開始
       # =========================================================
 
-      - name: Queue empty
-        if: steps.get_jobs.outputs.job_exists == 'false'
-        run: |
-          echo "Research queue is empty."
-          echo "Worker finished."
+      - name: Start job
 
+        if: steps.get_job.outputs.job_exists == 'true'
 
-      # =========================================================
-      # 4. 研究ジョブを処理
-      # =========================================================
-
-      - name: Process research jobs
-        if: steps.get_jobs.outputs.job_exists == 'true'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])')
+
+          STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/start.json \
+            --write-out "%{http_code}" \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data "{\"status\":\"running\",\"started_at\":\"${STARTED_AT}\"}")
+
+          echo "Start status: ${HTTP_STATUS}"
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            cat /tmp/start.json
+            exit 1
+          fi
+
+
+      # =========================================================
+      # 3. 過去研究結果取得
+      #
+      # AIに「今まで何をやったか」を渡す
+      # =========================================================
+
+      - name: Load research memory
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          PROJECT_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["project_id"])')
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --url "${BASE_URL}/rest/v1/research_results?select=id,title,hypothesis,content,evaluation,confidence_level,status,created_at&project_id=eq.${PROJECT_ID}&order=created_at.desc&limit=40" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            > /tmp/history.json
+
+          # 人間が登録した研究メモ
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --url "${BASE_URL}/rest/v1/research_memos?select=id,title,content,created_at&project_id=eq.${PROJECT_ID}&order=created_at.desc&limit=30" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            > /tmp/memos.json
+
+          echo "Research memory loaded."
+
+
+      # =========================================================
+      # 4. 研究プロンプト構築
+      #
+      # ここが「リーマン予想について継続的に考える」部分
+      # =========================================================
+
+      - name: Build autonomous research prompt
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        run: |
+
+          set -e
+
+          python3 <<'PY'
+
+          import json
+          import textwrap
+
+          with open("/tmp/job.json", "r", encoding="utf-8") as f:
+              job = json.load(f)
+
+          with open("/tmp/history.json", "r", encoding="utf-8") as f:
+              history = json.load(f)
+
+          with open("/tmp/memos.json", "r", encoding="utf-8") as f:
+              memos = json.load(f)
+
+          payload = job.get("payload") or {}
+
+          theme = str(
+              payload.get("theme", "")
+          ).strip()
+
+          if not theme:
+              raise SystemExit(
+                  "Research theme is empty."
+              )
+
+          history_text = json.dumps(
+              history,
+              ensure_ascii=False,
+              indent=2
+          )
+
+          memo_text = json.dumps(
+              memos,
+              ensure_ascii=False,
+              indent=2
+          )
+
+          prompt = f"""
+
+You are the autonomous research engine of a rigorous mathematical research laboratory.
+
+==================================================
+PRIMARY RESEARCH THEME
+==================================================
+
+{theme}
+
+==================================================
+MISSION
+==================================================
+
+Do NOT simply answer the question.
+
+Perform an actual research cycle.
+
+The goal is to generate a mathematically meaningful,
+testable research direction that can be continued by
+future research cycles.
+
+If the topic is an unresolved problem such as the
+Riemann Hypothesis:
+
+- Do NOT stop with "it is unsolved".
+- Do NOT claim a proof.
+- Do NOT pretend that a known theorem is a new result.
+- Continue exploring concrete mathematical approaches.
+- Clearly separate known mathematics from new hypotheses.
+
+==================================================
+PREVIOUS RESEARCH MEMORY
+==================================================
+
+{history_text}
+
+==================================================
+HUMAN RESEARCH MEMOS
+==================================================
+
+{memo_text}
+
+==================================================
+ANTI-REDISCOVERY RULES
+==================================================
+
+You must actively avoid merely reproducing known mathematics.
+
+Before proposing a direction:
+
+1. Compare it against previous research.
+2. Identify whether the idea is already contained
+   in the previous research.
+3. Identify whether it is simply a standard theorem
+   applied in an obvious way.
+4. Identify whether the route has already failed.
+5. Identify whether the route has already been attempted
+   three or more times.
+6. If it is too similar to a previous route,
+   reject it and generate another direction.
+7. Prefer a genuinely different formulation,
+   transformation, invariant, decomposition,
+   computational experiment, or connection.
+
+Never call something "new" merely because you generated it.
+
+==================================================
+MANDATORY MATHEMATICAL CHECKS
+==================================================
+
+For every promising hypothesis, consider as applicable:
+
+A. Direct proof
+
+B. Proof by contradiction
+
+C. Contrapositive
+
+D. Mathematical induction
+
+E. Reverse reasoning
+
+F. Necessary-condition analysis
+
+G. Sufficient-condition analysis
+
+H. Boundary and exceptional cases
+
+I. Special cases
+
+J. Counterexample search
+
+K. Numerical experimentation
+
+L. Symbolic consistency
+
+M. Dimensional / structural consistency where applicable
+
+N. Alternative formulation
+
+O. Cross-domain analogy
+
+P. Attempt to falsify the hypothesis
+
+Do not use a method merely for appearance.
+Only use methods that actually apply.
+
+==================================================
+COUNTEREXAMPLE REQUIREMENT
+==================================================
+
+For every conjectural statement:
+
+Try actively to construct a counterexample.
+
+Test:
+
+- small cases
+- extreme cases
+- boundary cases
+- degenerate cases
+- symmetric cases
+- asymmetric cases
+- known difficult cases
+
+If a counterexample is found,
+the hypothesis must NOT be marked promising.
+
+==================================================
+KNOWN MATHEMATICS REQUIREMENT
+==================================================
+
+Separate:
+
+KNOWN_FACTS
+
+from
+
+HYPOTHESIS
+
+from
+
+EVIDENCE
+
+from
+
+PROOF
+
+from
+
+SPECULATION
+
+Numerical agreement is NOT proof.
+
+A known theorem is NOT a new discovery.
+
+If a claim depends on literature,
+do not invent a citation.
+
+If literature cannot be verified in this environment,
+say so explicitly.
+
+==================================================
+ROUTE REPETITION
+==================================================
+
+A research route means the essential mathematical strategy,
+not merely different wording.
+
+If essentially the same route has already appeared
+three or more times:
+
+BLOCK THAT ROUTE.
+
+Do not continue making superficial variations.
+
+Instead generate a substantially different approach.
+
+==================================================
+SELF-CRITICISM
+==================================================
+
+Before finalizing the result, ask:
+
+1. What is the weakest logical step?
+2. What assumption is unproved?
+3. What could make this approach fail?
+4. Is this already known mathematics?
+5. Did I accidentally turn evidence into proof?
+6. Did I accidentally assume the desired conclusion?
+7. Can a counterexample exist?
+8. Is the proposed next step actually executable?
+
+==================================================
+CONTINUOUS RESEARCH
+==================================================
+
+This is one cycle of a potentially infinite research process.
+
+Do NOT conclude that the overall research is finished
+unless a genuine mathematical reason exists.
+
+Instead provide:
+
+- current conclusion
+- strongest unresolved gap
+- next research direction
+- alternative research direction
+
+A future worker will continue from this result.
+
+==================================================
+POSITIVE RESULT REVERIFICATION
+==================================================
+
+If previous research contains an ⭕️ result:
+
+Do NOT blindly trust it.
+
+Attempt independent verification.
+
+Prefer a different proof strategy when possible.
+
+For example:
+
+- if original route used direct proof,
+  try contradiction;
+- if possible, try contrapositive;
+- if a recursive structure exists,
+  consider induction;
+- if numerical evidence was used,
+  attempt symbolic justification.
+
+An ⭕️ result remains provisional until independently
+reverified.
+
+==================================================
+OUTPUT
+==================================================
+
+Return ONLY valid JSON.
+
+Required keys:
+
+title
+hypothesis
+research_question
+known_facts
+assumptions
+evidence
+approach
+proof_strategy
+counterexample_strategy
+cross_domain_connection
+critical_gap
+failure_analysis
+novelty_check
+route_signature
+next_steps
+alternative_next_steps
+reverification_plan
+status
+confidence
+continue_research
+
+Allowed status:
+
+candidate
+promising
+uncertain
+rejected
+needs_verification
+
+confidence:
+
+0.0 to 1.0
+
+continue_research:
+
+true or false
+
+IMPORTANT:
+
+For an unresolved problem such as the Riemann Hypothesis,
+continue_research should normally be true unless there is
+a technical reason to stop this research branch.
+
+"""
+
+          with open(
+              "/tmp/prompt.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              f.write(
+                  textwrap.dedent(prompt)
+              )
+
+          print(
+              "Autonomous research prompt created."
+          )
+
+          PY
+
+
+      # =========================================================
+      # 5. キャンセル確認
+      # =========================================================
+
+      - name: Check cancellation before AI
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])')
+
+          STATUS=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=status&id=eq.${JOB_ID}" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" |
+            python3 -c \
+            'import json,sys; a=json.load(sys.stdin); print(a[0]["status"] if a else "missing")')
+
+          if [ "${STATUS}" != "running" ]; then
+            echo "Job is no longer running."
+            exit 1
+          fi
+
+
+      # =========================================================
+      # 6. OpenRouter
+      # =========================================================
+
+      - name: Call OpenRouter
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+        run: |
+
+          set -e
+
+          python3 <<'PY'
+
+          import json
+
+          with open(
+              "/tmp/prompt.txt",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              prompt = f.read()
+
+          request = {
+
+              "model":
+                  "nvidia/nemotron-3-ultra-550b-a55b:free",
+
+              "messages": [
+
+                  {
+                      "role": "system",
+                      "content":
+                          "You are a rigorous autonomous mathematics research AI. "
+                          "Never fabricate facts, proofs, citations, or discoveries. "
+                          "Return JSON only."
+                  },
+
+                  {
+                      "role": "user",
+                      "content": prompt
+                  }
+
+              ],
+
+              "temperature": 0.2,
+
+              "max_tokens": 10000
+
+          }
+
+          with open(
+              "/tmp/request.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  request,
+                  f,
+                  ensure_ascii=False
+              )
+
+          PY
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/ai.json \
+            --write-out "%{http_code}" \
+            --request POST \
+            --url "https://openrouter.ai/api/v1/chat/completions" \
+            --header "Authorization: Bearer ${OPENROUTER_API_KEY}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/request.json)
+
+          echo "OpenRouter HTTP status: ${HTTP_STATUS}"
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            cat /tmp/ai.json
+            exit 1
+          fi
+
+          python3 <<'PY'
+
+          import json
+
+          with open(
+              "/tmp/ai.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              data = json.load(f)
+
+          content = (
+              data
+              .get("choices", [{}])[0]
+              .get("message", {})
+              .get("content")
+          )
+
+          if not content:
+              raise SystemExit(
+                  "OpenRouter returned no content."
+              )
+
+          with open(
+              "/tmp/ai_text.txt",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              f.write(content)
+
+          PY
+
+
+      # =========================================================
+      # 7. AI結果検証
+      # =========================================================
+
+      - name: Validate AI result
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        run: |
+
+          set -e
+
+          python3 <<'PY'
+
+          import json
+          import re
+
+          with open(
+              "/tmp/ai_text.txt",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              raw = f.read().strip()
+
+          raw = re.sub(
+              r"^```(?:json)?\s*",
+              "",
+              raw,
+              flags=re.I
+          )
+
+          raw = re.sub(
+              r"\s*```$",
+              "",
+              raw
+          )
+
+          try:
+
+              result = json.loads(raw)
+
+          except json.JSONDecodeError:
+
+              match = re.search(
+                  r"\{.*\}",
+                  raw,
+                  re.S
+              )
+
+              if not match:
+                  raise SystemExit(
+                      "AI JSON not found."
+                  )
+
+              result = json.loads(
+                  match.group(0)
+              )
+
+          confidence_raw = \
+              result.get(
+                  "confidence",
+                  0
+              )
+
+          try:
+              confidence = float(
+                  confidence_raw
+              )
+          except:
+              confidence = 0.0
+
+          confidence = max(
+              0.0,
+              min(
+                  1.0,
+                  confidence
+              )
+          )
+
+          status = str(
+              result.get(
+                  "status",
+                  "uncertain"
+              )
+          ).lower().strip()
+
+          # --------------------------------------------------
+          # 評価
+          # --------------------------------------------------
+
+          if (
+              status == "promising"
+              and confidence >= 0.8
+          ):
+              evaluation = "⭕️"
+
+          elif status == "rejected":
+
+              evaluation = "❌"
+
+          else:
+
+              evaluation = "△"
+
+          # --------------------------------------------------
+          # 研究結果
+          # --------------------------------------------------
+
+          with open(
+              "/tmp/job.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              job = json.load(f)
+
+          content = {
+
+              "research_question":
+                  result.get(
+                      "research_question"
+                  ),
+
+              "known_facts":
+                  result.get(
+                      "known_facts",
+                      []
+                  ),
+
+              "assumptions":
+                  result.get(
+                      "assumptions",
+                      []
+                  ),
+
+              "evidence":
+                  result.get(
+                      "evidence",
+                      []
+                  ),
+
+              "approach":
+                  result.get(
+                      "approach",
+                      []
+                  ),
+
+              "proof_strategy":
+                  result.get(
+                      "proof_strategy",
+                      []
+                  ),
+
+              "counterexample_strategy":
+                  result.get(
+                      "counterexample_strategy",
+                      []
+                  ),
+
+              "cross_domain_connection":
+                  result.get(
+                      "cross_domain_connection",
+                      []
+                  ),
+
+              "critical_gap":
+                  result.get(
+                      "critical_gap"
+                  ),
+
+              "failure_analysis":
+                  result.get(
+                      "failure_analysis",
+                      []
+                  ),
+
+              "novelty_check":
+                  result.get(
+                      "novelty_check",
+                      ""
+                  ),
+
+              "route_signature":
+                  result.get(
+                      "route_signature",
+                      ""
+                  ),
+
+              "next_steps":
+                  result.get(
+                      "next_steps",
+                      []
+                  ),
+
+              "alternative_next_steps":
+                  result.get(
+                      "alternative_next_steps",
+                      []
+                  ),
+
+              "reverification_plan":
+                  result.get(
+                      "reverification_plan",
+                      []
+                  ),
+
+              "source_job_id":
+                  job["id"],
+
+              "research_configuration":
+                  job.get(
+                      "payload",
+                      {}
+                  )
+
+          }
+
+          record = {
+
+              "project_id":
+                  job["project_id"],
+
+              "title":
+                  str(
+                      result.get(
+                          "title",
+                          "AI数学研究"
+                      )
+                  ),
+
+              "hypothesis":
+                  str(
+                      result.get(
+                          "hypothesis",
+                          ""
+                      )
+                  ),
+
+              "content":
+                  json.dumps(
+                      content,
+                      ensure_ascii=False
+                  ),
+
+              "status":
+                  "pending",
+
+              "evaluation":
+                  evaluation,
+
+              "confidence_level":
+                  round(
+                      confidence * 5
+                  ),
+
+              "is_human_saved":
+                  False
+
+          }
+
+          with open(
+              "/tmp/result.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  record,
+                  f,
+                  ensure_ascii=False
+              )
+
+          # 次の研究ジョブに渡す情報
+          continuation = {
+
+              "theme":
+                  job
+                  .get("payload", {})
+                  .get("theme", ""),
+
+              "source":
+                  "autonomous_continuation",
+
+              "mode":
+                  "continuous_mathematical_research",
+
+              "parent_job_id":
+                  job["id"],
+
+              "parent_evaluation":
+                  evaluation,
+
+              "route_signature":
+                  result.get(
+                      "route_signature",
+                      ""
+                  ),
+
+              "next_steps":
+                  result.get(
+                      "next_steps",
+                      []
+                  ),
+
+              "alternative_next_steps":
+                  result.get(
+                      "alternative_next_steps",
+                      []
+                  ),
+
+              "reverification":
+                  evaluation == "⭕️"
+
+          }
+
+          with open(
+              "/tmp/continuation.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  continuation,
+                  f,
+                  ensure_ascii=False
+              )
+
+          print(
+              "Evaluation:",
+              evaluation
+          )
+
+          print(
+              "Confidence:",
+              confidence
+          )
+
+          PY
+
+
+      # =========================================================
+      # 8. 保存前キャンセル確認
+      # =========================================================
+
+      - name: Check cancellation before save
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])')
+
+          STATUS=$(curl \
+            --silent \
+            --show-error \
+            --fail \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=status&id=eq.${JOB_ID}" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" |
+            python3 -c \
+            'import json,sys; a=json.load(sys.stdin); print(a[0]["status"] if a else "missing")')
+
+          if [ "${STATUS}" != "running" ]; then
+            echo "Cancelled before save."
+            exit 1
+          fi
+
+
+      # =========================================================
+      # 9. 研究結果保存
+      # =========================================================
+
+      - name: Save research result
+
+        if: steps.get_job.outputs.job_exists == 'true'
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/save.json \
+            --write-out "%{http_code}" \
+            --request POST \
+            --url "${BASE_URL}/rest/v1/research_results" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=minimal" \
+            --data-binary @/tmp/result.json)
+
+          echo "Result save status: ${HTTP_STATUS}"
+
+          if [ "${HTTP_STATUS}" -lt 200 ] || [ "${HTTP_STATUS}" -ge 300 ]; then
+            cat /tmp/save.json
+            exit 1
+          fi
+
+          echo "RESEARCH RESULT SAVED."
+
+
+      # =========================================================
+      # 10. 次の研究ジョブを自動生成
+      #
+      # ★ここで「1件出たら終了」を防ぐ
+      # =========================================================
+
+      - name: Queue next research cycle
+
+        if: steps.get_job.outputs.job_exists == 'true' && success()
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
         run: |
 
           set -e
@@ -117,1089 +1141,139 @@ jobs:
           BASE_URL="${BASE_URL%/rest/v1}"
 
           python3 <<'PY'
+
           import json
-          import os
-          import subprocess
-          import urllib.parse
-          import urllib.request
-          import urllib.error
-          from datetime import datetime, timezone
-
-          SUPABASE_URL = os.environ["SUPABASE_URL"]
-          SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-          OPENROUTER_KEY = os.environ["OPENROUTER_API_KEY"]
-
-          BASE_URL = SUPABASE_URL.rstrip("/")
-          if BASE_URL.endswith("/rest/v1"):
-              BASE_URL = BASE_URL[:-8]
-
-          REST = BASE_URL + "/rest/v1"
-
-          HEADERS = {
-              "apikey": SERVICE_KEY,
-              "Authorization": "Bearer " + SERVICE_KEY,
-              "Content-Type": "application/json"
-          }
-
-
-          # =====================================================
-          # 共通HTTP
-          # =====================================================
-
-          def supabase_request(
-              method,
-              path,
-              data=None
-          ):
-
-              url = REST + path
-
-              body = None
-
-              if data is not None:
-                  body = json.dumps(
-                      data,
-                      ensure_ascii=False
-                  ).encode("utf-8")
-
-              request = urllib.request.Request(
-                  url,
-                  data=body,
-                  method=method,
-                  headers=HEADERS
-              )
-
-              with urllib.request.urlopen(
-                  request,
-                  timeout=30
-              ) as response:
-
-                  raw = response.read()
-
-                  if not raw:
-                      return None
-
-                  return json.loads(
-                      raw.decode("utf-8")
-                  )
-
-
-          def now():
-              return datetime.now(
-                  timezone.utc
-              ).strftime(
-                  "%Y-%m-%dT%H:%M:%SZ"
-              )
-
-
-          # =====================================================
-          # AI呼び出し
-          # =====================================================
-
-          def call_ai(
-              system,
-              prompt,
-              max_tokens=8000
-          ):
-
-              payload = {
-
-                  "model":
-                      "nvidia/nemotron-3-ultra-550b-a55b:free",
-
-                  "messages": [
-
-                      {
-                          "role": "system",
-                          "content": system
-                      },
-
-                      {
-                          "role": "user",
-                          "content": prompt
-                      }
-
-                  ],
-
-                  "temperature": 0.15,
-
-                  "max_tokens":
-                      max_tokens
-
-              }
-
-              request =
-                  urllib.request.Request(
-                      "https://openrouter.ai/api/v1/chat/completions",
-                      data=json.dumps(
-                          payload
-                      ).encode("utf-8"),
-                      method="POST",
-                      headers={
-                          "Authorization":
-                              "Bearer " + OPENROUTER_KEY,
-
-                          "Content-Type":
-                              "application/json"
-                      }
-                  )
-
-              with urllib.request.urlopen(
-                  request,
-                  timeout=180
-              ) as response:
-
-                  data = json.loads(
-                      response.read().decode("utf-8")
-                  )
-
-              return (
-                  data["choices"][0]
-                  ["message"]
-                  ["content"]
-              )
-
-
-          # =====================================================
-          # JSON抽出
-          # =====================================================
-
-          def parse_ai_json(text):
-
-              text = text.strip()
-
-              if text.startswith("```"):
-                  lines = text.splitlines()
-
-                  if lines:
-                      lines = lines[1:]
-
-                  if lines and lines[-1].strip() == "```":
-                      lines = lines[:-1]
-
-                  text = "\n".join(lines)
-
-              try:
-                  return json.loads(text)
-
-              except Exception:
-
-                  start = text.find("{")
-                  end = text.rfind("}")
-
-                  if start >= 0 and end > start:
-
-                      return json.loads(
-                          text[start:end + 1]
-                      )
-
-                  raise
-
-
-          # =====================================================
-          # ジョブ処理
-          # =====================================================
 
           with open(
-              "/tmp/jobs.json",
+              "/tmp/job.json",
               "r",
               encoding="utf-8"
           ) as f:
+              job = json.load(f)
 
-              jobs = json.load(f)
+          with open(
+              "/tmp/continuation.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+              continuation = json.load(f)
 
+          # 次のジョブ
+          next_job = {
 
-          for index, job in enumerate(jobs):
+              "project_id":
+                  job["project_id"],
 
-              print("")
-              print(
-                  "======================================"
+              "job_type":
+                  "research_cycle",
+
+              "status":
+                  "queued",
+
+              "priority":
+                  5,
+
+              "payload":
+                  continuation
+
+          }
+
+          with open(
+              "/tmp/next_job.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  next_job,
+                  f,
+                  ensure_ascii=False
               )
-              print(
-                  f"PROCESSING JOB {index + 1}/{len(jobs)}"
-              )
-              print(
-                  "======================================"
-              )
-
-              job_id = job["id"]
-
-              project_id = job["project_id"]
-
-              payload = job.get(
-                  "payload"
-              ) or {}
-
-              theme = str(
-                  payload.get(
-                      "theme",
-                      ""
-                  )
-              ).strip()
-
-
-              if not theme:
-
-                  print(
-                      "Theme is empty. Marking failed."
-                  )
-
-                  supabase_request(
-                      "PATCH",
-                      f"/research_jobs?id=eq.{job_id}",
-                      {
-                          "status":
-                              "failed",
-
-                          "error_message":
-                              "Research theme is empty",
-
-                          "finished_at":
-                              now()
-                      }
-                  )
-
-                  continue
-
-
-              # =================================================
-              # ジョブをrunningへ
-              # =================================================
-
-              started = supabase_request(
-                  "PATCH",
-                  f"/research_jobs?id=eq.{job_id}&status=eq.queued",
-                  {
-                      "status":
-                          "running",
-
-                      "started_at":
-                          now()
-                  }
-              )
-
-              if not started:
-
-                  print(
-                      "Job was already claimed."
-                  )
-
-                  continue
-
-
-              try:
-
-                  # =============================================
-                  # 既存研究結果取得
-                  # =============================================
-
-                  encoded_project = urllib.parse.quote(
-                      project_id,
-                      safe=""
-                  )
-
-                  previous = supabase_request(
-                      "GET",
-                      "/research_results"
-                      f"?select=id,title,hypothesis,"
-                      f"content,status,evaluation,"
-                      f"confidence_level,created_at"
-                      f"&project_id=eq.{encoded_project}"
-                      f"&order=created_at.desc"
-                      f"&limit=50"
-                  ) or []
-
-
-                  # =============================================
-                  # AI研究メモ取得
-                  # =============================================
-
-                  memos = supabase_request(
-                      "GET",
-                      "/research_memos"
-                      f"?select=id,title,content,"
-                      f"created_at,updated_at"
-                      f"&project_id=eq.{encoded_project}"
-                      f"&order=created_at.desc"
-                      f"&limit=30"
-                  ) or []
-
-
-                  # =============================================
-                  # 過去研究から重要情報抽出
-                  # =============================================
-
-                  previous_context = []
-
-                  for r in previous:
-
-                      content = r.get(
-                          "content"
-                      )
-
-                      if isinstance(
-                          content,
-                          str
-                      ):
-
-                          try:
-                              content =
-                                  json.loads(
-                                      content
-                                  )
-                          except:
-                              pass
-
-
-                      previous_context.append({
-
-                          "title":
-                              r.get(
-                                  "title"
-                              ),
-
-                          "hypothesis":
-                              r.get(
-                                  "hypothesis"
-                              ),
-
-                          "evaluation":
-                              r.get(
-                                  "evaluation"
-                              ),
-
-                          "confidence":
-                              r.get(
-                                  "confidence_level"
-                              ),
-
-                          "content":
-                              content
-
-                      })
-
-
-                  memo_context = [
-
-                      {
-                          "title":
-                              m.get("title"),
-
-                          "content":
-                              m.get("content")
-
-                      }
-
-                      for m in memos
-
-                  ]
-
-
-                  # =============================================
-                  # 研究ルートの抽出
-                  # =============================================
-
-                  routes = {}
-
-                  for r in previous:
-
-                      content = r.get(
-                          "content"
-                      )
-
-                      if isinstance(
-                          content,
-                          str
-                      ):
-
-                          try:
-                              content =
-                                  json.loads(
-                                      content
-                                  )
-                          except:
-                              content = {}
-
-
-                      approach = str(
-                          content.get(
-                              "approach",
-                              ""
-                          )
-                      )
-
-                      proof = str(
-                          content.get(
-                              "proof_strategy",
-                              ""
-                          )
-                      )
-
-                      route_key = (
-                          approach[:300]
-                          + "|"
-                          + proof[:300]
-                      )
-
-                      if route_key.strip("|"):
-
-                          routes[route_key] = (
-                              routes.get(
-                                  route_key,
-                                  0
-                              ) + 1
-                          )
-
-
-                  blocked_routes = [
-
-                      route
-
-                      for route, count
-                      in routes.items()
-
-                      if count >= 3
-
-                  ]
-
-
-                  # =============================================
-                  # 第1段階
-                  # 新規研究仮説生成
-                  # =============================================
-
-                  system_prompt = """
-
-You are the core research engine of an autonomous mathematical research laboratory.
-
-Your task is NOT to merely answer the user's question.
-
-Your task is to perform genuine mathematical investigation.
-
-Absolute rules:
-
-1. Never claim a conjecture is proven unless every logical step is justified.
-
-2. Never present numerical evidence as proof.
-
-3. Never invent papers, citations, authors, theorems, or references.
-
-4. Clearly distinguish:
-   known mathematical facts,
-   hypotheses,
-   conjectures,
-   computational evidence,
-   and deductions.
-
-5. Do not simply reproduce a standard textbook proof.
-
-6. Search for genuinely different research directions.
-
-7. Always attempt to find counterexamples.
-
-8. Explicitly identify the largest logical gap.
-
-9. If the problem is currently unsolved, continue mathematical investigation rather than stopping at "unsolved".
-
-10. Previous failed routes must influence the next research direction.
-
-11. A route attempted three or more times must be treated as BLOCKED.
-
-12. Do not circumvent a blocked route by merely renaming it.
-
-13. Whenever possible, test multiple proof paradigms:
-    - direct proof
-    - contradiction
-    - contrapositive
-    - induction
-    - infinite descent
-    - extremal arguments
-    - algebraic reformulation
-    - analytic reformulation
-    - computational experiment
-    - cross-domain analogy
-
-14. A proposed theorem must survive an explicit counterexample search.
-
-15. A promising result must receive an independent verification attempt.
-
-16. Do not confuse "AI believes this is correct" with mathematical validity.
-
-Return valid JSON only.
-"""
-
-
-                  research_prompt = f"""
-
-RESEARCH TARGET
-
-{theme}
-
-
-USER / CLAUDE RESEARCH MEMOS
-
-These are notes supplied by the researcher.
-
-{json.dumps(
-    memo_context,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-PREVIOUS RESEARCH
-
-{json.dumps(
-    previous_context,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-BLOCKED RESEARCH ROUTES
-
-The following routes have already been attempted at least three times.
-
-{json.dumps(
-    blocked_routes,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-IMPORTANT:
-
-Do not repeat a blocked route.
-
-Do not merely rename a blocked route.
-
-Find a mathematically distinct route.
-
-
-Generate a research investigation with:
-
-1. precise research question
-2. known facts
-3. genuinely new hypothesis
-4. assumptions
-5. proposed mathematical transformation
-6. proof strategy
-7. at least two alternative proof strategies
-8. counterexample strategy
-9. independent verification strategy
-10. potential computational experiment
-11. cross-domain connection
-12. critical logical gap
-13. relation to known mathematics
-14. next research steps
-
-
-The research must be exploratory.
-
-If the target is a famous unsolved problem such as the Riemann Hypothesis,
-do NOT answer merely that it is unsolved.
-
-Instead investigate a specific mathematical subproblem or potentially useful
-reformulation while explicitly stating that no proof has been established.
-
-
-Return:
-
-{
-  "title": "...",
-  "research_question": "...",
-  "hypothesis": "...",
-  "known_facts": [],
-  "assumptions": [],
-  "approach": [],
-  "proof_strategy": "...",
-  "alternative_proof_strategies": [],
-  "counterexample_strategy": [],
-  "independent_verification": [],
-  "computational_experiment": [],
-  "cross_domain_connection": [],
-  "critical_gap": "...",
-  "relation_to_known_mathematics": "...",
-  "next_steps": [],
-  "route_signature": "...",
-  "status": "candidate|promising|uncertain|rejected|needs_verification",
-  "confidence": 0.0
-}
-"""
-
-
-                  raw =
-                      call_ai(
-                          system_prompt,
-                          research_prompt,
-                          9000
-                      )
-
-
-                  result =
-                      parse_ai_json(raw)
-
-
-                  # =============================================
-                  # 研究結果の基本検査
-                  # =============================================
-
-                  confidence = 0.0
-
-                  try:
-                      confidence =
-                          float(
-                              result.get(
-                                  "confidence",
-                                  0
-                              )
-                          )
-                  except:
-                      confidence = 0.0
-
-                  confidence =
-                      max(
-                          0.0,
-                          min(
-                              1.0,
-                              confidence
-                          )
-                      )
-
-
-                  status = str(
-                      result.get(
-                          "status",
-                          "uncertain"
-                      )
-                  ).lower()
-
-
-                  route_signature = str(
-                      result.get(
-                          "route_signature",
-                          ""
-                      )
-                  ).strip()
-
-
-                  # =============================================
-                  # 3回以上ルート遮断
-                  # =============================================
-
-                  route_count = 0
-
-                  if route_signature:
-
-                      for route in routes:
-
-                          if (
-                              route_signature[:250]
-                              == route[:250]
-                          ):
-
-                              route_count =
-                                  routes[route]
-
-
-                  if route_count >= 3:
-
-                      result["status"] =
-                          "rejected"
-
-                      result["critical_gap"] = (
-                          "This research route has "
-                          "already been attempted "
-                          "three or more times and is blocked."
-                      )
-
-                      result["next_steps"] = [
-                          "Use a mathematically distinct route."
-                      ]
-
-                      status = "rejected"
-
-
-                  # =============================================
-                  # 評価
-                  # =============================================
-
-                  if (
-                      status == "promising"
-                      and confidence >= 0.8
-                  ):
-
-                      evaluation = "⭕️"
-
-                  elif status == "rejected":
-
-                      evaluation = "❌"
-
-                  else:
-
-                      evaluation = "△"
-
-
-                  # =============================================
-                  # ⭕️候補の独立再検証
-                  # =============================================
-
-                  verification = None
-
-                  if evaluation == "⭕️":
-
-                      verification_prompt = f"""
-
-You are an independent mathematical verifier.
-
-Do NOT assume the previous research is correct.
-
-Research:
-
-{json.dumps(
-    result,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-Perform an independent verification.
-
-Try specifically:
-
-1. contradiction
-2. contrapositive
-3. induction where applicable
-4. direct derivation
-5. counterexample search
-6. hidden assumption detection
-7. edge cases
-8. dependency on known theorems
-9. whether the conclusion actually follows
-10. whether the result merely restates known mathematics
-
-Return JSON:
-
-{{
-  "verified": true,
-  "independent_reasoning": [],
-  "counterexample_found": false,
-  "logical_gap_found": false,
-  "gap": "...",
-  "final_assessment": "..."
-}}
-
-Never claim a proof exists unless the proof is actually complete.
-"""
-
-
-                      verification_raw =
-                          call_ai(
-                              """
-You are an extremely strict independent
-mathematical verifier.
-
-Never rubber-stamp another AI's result.
-""",
-                              verification_prompt,
-                              7000
-                          )
-
-
-                      verification =
-                          parse_ai_json(
-                              verification_raw
-                          )
-
-
-                      if (
-                          not verification.get(
-                              "verified",
-                              False
-                          )
-                          or verification.get(
-                              "counterexample_found",
-                              False
-                          )
-                          or verification.get(
-                              "logical_gap_found",
-                              False
-                          )
-                      ):
-
-                          evaluation = "△"
-
-                          result["status"] =
-                              "needs_verification"
-
-                          result["critical_gap"] = (
-                              verification.get(
-                                  "gap"
-                              )
-                              or
-                              result.get(
-                                  "critical_gap"
-                              )
-                          )
-
-
-                  # =============================================
-                  # 保存用content
-                  # =============================================
-
-                  content = {
-
-                      "research_question":
-                          result.get(
-                              "research_question"
-                          ),
-
-                      "known_facts":
-                          result.get(
-                              "known_facts",
-                              []
-                          ),
-
-                      "assumptions":
-                          result.get(
-                              "assumptions",
-                              []
-                          ),
-
-                      "approach":
-                          result.get(
-                              "approach",
-                              []
-                          ),
-
-                      "proof_strategy":
-                          result.get(
-                              "proof_strategy"
-                          ),
-
-                      "alternative_proof_strategies":
-                          result.get(
-                              "alternative_proof_strategies",
-                              []
-                          ),
-
-                      "counterexample_strategy":
-                          result.get(
-                              "counterexample_strategy",
-                              []
-                          ),
-
-                      "independent_verification":
-                          result.get(
-                              "independent_verification",
-                              []
-                          ),
-
-                      "computational_experiment":
-                          result.get(
-                              "computational_experiment",
-                              []
-                          ),
-
-                      "cross_domain_connection":
-                          result.get(
-                              "cross_domain_connection",
-                              []
-                          ),
-
-                      "critical_gap":
-                          result.get(
-                              "critical_gap"
-                          ),
-
-                      "relation_to_known_mathematics":
-                          result.get(
-                              "relation_to_known_mathematics"
-                          ),
-
-                      "next_steps":
-                          result.get(
-                              "next_steps",
-                              []
-                          ),
-
-                      "route_signature":
-                          route_signature,
-
-                      "verification":
-                          verification,
-
-                      "source_job_id":
-                          job_id,
-
-                      "research_configuration":
-                          payload
-
-                  }
-
-
-                  confidence_level =
-                      round(
-                          confidence * 5
-                      )
-
-
-                  # =============================================
-                  # 研究結果保存
-                  # =============================================
-
-                  record = {
-
-                      "project_id":
-                          project_id,
-
-                      "title":
-                          str(
-                              result.get(
-                                  "title",
-                                  "AI数学研究"
-                              )
-                          ),
-
-                      "hypothesis":
-                          str(
-                              result.get(
-                                  "hypothesis",
-                                  ""
-                              )
-                          ),
-
-                      "content":
-                          json.dumps(
-                              content,
-                              ensure_ascii=False
-                          ),
-
-                      "status":
-                          "pending",
-
-                      "evaluation":
-                          evaluation,
-
-                      "confidence_level":
-                          confidence_level,
-
-                      # ⭕️は人間が消すまで残す
-                      "is_human_saved":
-                          evaluation == "⭕️"
-
-                  }
-
-
-                  supabase_request(
-                      "POST",
-                      "/research_results",
-                      record
-                  )
-
-
-                  # =============================================
-                  # ジョブ完了
-                  # =============================================
-
-                  supabase_request(
-                      "PATCH",
-                      f"/research_jobs?id=eq.{job_id}&status=eq.running",
-                      {
-                          "status":
-                              "completed",
-
-                          "finished_at":
-                              now(),
-
-                          "result":
-                              {
-                                  "evaluation":
-                                      evaluation,
-
-                                  "confidence":
-                                      confidence,
-
-                                  "route":
-                                      route_signature
-                              }
-                      }
-                  )
-
-
-                  print(
-                      "JOB COMPLETED:",
-                      job_id
-                  )
-
-                  print(
-                      "Evaluation:",
-                      evaluation
-                  )
-
-                  print(
-                      "Confidence:",
-                      confidence
-                  )
-
-
-              except Exception as error:
-
-                  print(
-                      "JOB ERROR:",
-                      repr(error)
-                  )
-
-
-                  # =============================================
-                  # 失敗処理
-                  # =============================================
-
-                  try:
-
-                      supabase_request(
-                          "PATCH",
-                          f"/research_jobs?id=eq.{job_id}&status=eq.running",
-                          {
-                              "status":
-                                  "failed",
-
-                              "error_message":
-                                  str(error)[:2000],
-
-                              "finished_at":
-                                  now()
-                          }
-                      )
-
-                  except Exception as secondary:
-
-                      print(
-                          "Could not mark job failed:",
-                          repr(secondary)
-                      )
-
-
-          print("")
-          print(
-              "======================================"
-          )
-          print(
-              " ALL QUEUED JOBS PROCESSED"
-          )
-          print(
-              "======================================"
-          )
 
           PY
 
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --request POST \
+            --url "${BASE_URL}/rest/v1/research_jobs" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --data-binary @/tmp/next_job.json
+
+          echo "NEXT RESEARCH CYCLE QUEUED."
+
 
       # =========================================================
-      # 5. Worker終了
+      # 11. 現在のジョブ完了
       # =========================================================
 
-      - name: Worker finished
-        if: always()
+      - name: Complete current job
+
+        if: steps.get_job.outputs.job_exists == 'true' && success()
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
         run: |
-          echo "Research worker finished."
-          echo "Queued jobs processed: ${{ steps.get_jobs.outputs.jobs_count }}"
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])')
+
+          FINISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"status\":\"completed\",\"finished_at\":\"${FINISHED_AT}\"}"
+
+          echo "CURRENT JOB COMPLETED."
+
+
+      # =========================================================
+      # 12. 失敗処理
+      # =========================================================
+
+      - name: Mark failed
+
+        if: steps.get_job.outputs.job_exists == 'true' && failure()
+
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+        run: |
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          JOB_ID=$(python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])')
+
+          FINISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          curl \
+            --silent \
+            --show-error \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.running" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --data "{\"status\":\"failed\",\"error_message\":\"Research worker failed\",\"finished_at\":\"${FINISHED_AT}\"}" \
+            || true
+
+          echo "JOB MARKED FAILED."
