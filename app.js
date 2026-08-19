@@ -2,7 +2,7 @@ const SUPABASE_URL =
   "https://beadajbimgpephqszbfy.supabase.co";
 
 const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_HmcPY6BGvUQTPESGHVe7Hw_W4NlTPqj";
+  "sb_publishable_s5kiFZVJ9jXyOgS-j2pS-g_7Kj1IeC8";
 
 const PROJECT_ID =
   "ab429192-27d2-47e4-9ad7-08b639f45120";
