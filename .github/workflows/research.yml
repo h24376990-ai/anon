@@ -4,68 +4,48 @@ on:
   workflow_dispatch:
 
   schedule:
-    # GitHub Actionsの最小スケジュール間隔
-    # 実際の開始時刻はGitHub側の混雑等で遅れる場合があります
+    # GitHub Actionsの仕様上、5分より短いcronにはできません。
     - cron: "*/5 * * * *"
 
 permissions:
   contents: read
 
-concurrency:
-  group: math-research-worker
-  cancel-in-progress: false
-
 jobs:
 
   research:
-
     name: AI Research Worker
-
     runs-on: ubuntu-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
 
       # =========================================================
-      # 1. 基本環境
+      # 1. 基本準備
       # =========================================================
 
-      - name: Prepare environment
+      - name: Initialize
         run: |
           set -e
 
+          echo "======================================"
+          echo " Research AI Lab Worker"
+          echo "======================================"
+
           python3 --version
-          curl --version
-
-          mkdir -p /tmp/research
-
-          echo "Research worker initialized."
+          curl --version | head -1
 
 
       # =========================================================
-      # 2. キュー取得
-      #
-      # 最大3件まで取得
-      #
-      # これにより
-      #
-      # job A
-      # job B
-      # job C
-      #
-      # を1回のActions起動で処理できる
+      # 2. キューからジョブ取得
       # =========================================================
 
       - name: Get queued research jobs
         id: get_jobs
-
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
         run: |
-
           set -e
 
           BASE_URL="${SUPABASE_URL%/}"
@@ -74,10 +54,10 @@ jobs:
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/research/jobs.json \
+            --output /tmp/jobs.json \
             --write-out "%{http_code}" \
             --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=3" \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=5" \
             --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             --header "Content-Type: application/json")
@@ -85,56 +65,50 @@ jobs:
           echo "HTTP status: ${HTTP_STATUS}"
 
           if [ "${HTTP_STATUS}" != "200" ]; then
-            cat /tmp/research/jobs.json
+            cat /tmp/jobs.json
             exit 1
           fi
 
           python3 <<'PY'
-
           import json
 
-          path = "/tmp/research/jobs.json"
-
-          with open(path, "r", encoding="utf-8") as f:
+          with open("/tmp/jobs.json", "r", encoding="utf-8") as f:
               jobs = json.load(f)
 
           print("Queued jobs:", len(jobs))
 
-          with open(
-              "/tmp/research/job_exists",
-              "w",
-              encoding="utf-8"
-          ) as f:
+          with open("/tmp/job_exists", "w") as f:
               f.write("true" if jobs else "false")
 
-          with open(
-              "/tmp/research/jobs_selected.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-              json.dump(
-                  jobs,
-                  f,
-                  ensure_ascii=False
-              )
-
+          with open("/tmp/jobs_count", "w") as f:
+              f.write(str(len(jobs)))
           PY
 
-          echo "job_exists=$(cat /tmp/research/job_exists)" >> "$GITHUB_OUTPUT"
+          echo "job_exists=$(cat /tmp/job_exists)" >> "$GITHUB_OUTPUT"
+          echo "jobs_count=$(cat /tmp/jobs_count)" >> "$GITHUB_OUTPUT"
 
 
       # =========================================================
-      # 3. ジョブ処理開始
+      # 3. キューが空なら終了
       # =========================================================
 
-      - name: Process research queue
+      - name: Queue empty
+        if: steps.get_jobs.outputs.job_exists == 'false'
+        run: |
+          echo "Research queue is empty."
+          echo "Worker finished."
+
+
+      # =========================================================
+      # 4. 研究ジョブを処理
+      # =========================================================
+
+      - name: Process research jobs
         if: steps.get_jobs.outputs.job_exists == 'true'
-
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-
         run: |
 
           set -e
@@ -143,357 +117,89 @@ jobs:
           BASE_URL="${BASE_URL%/rest/v1}"
 
           python3 <<'PY'
-
           import json
           import os
           import subprocess
           import urllib.parse
           import urllib.request
           import urllib.error
-          import re
-          import hashlib
           from datetime import datetime, timezone
 
-
-          BASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
-
-          if BASE_URL.endswith("/rest/v1"):
-              BASE_URL = BASE_URL[:-8]
-
+          SUPABASE_URL = os.environ["SUPABASE_URL"]
           SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
           OPENROUTER_KEY = os.environ["OPENROUTER_API_KEY"]
 
+          BASE_URL = SUPABASE_URL.rstrip("/")
+          if BASE_URL.endswith("/rest/v1"):
+              BASE_URL = BASE_URL[:-8]
+
+          REST = BASE_URL + "/rest/v1"
+
+          HEADERS = {
+              "apikey": SERVICE_KEY,
+              "Authorization": "Bearer " + SERVICE_KEY,
+              "Content-Type": "application/json"
+          }
+
 
           # =====================================================
-          # HTTP helper
+          # 共通HTTP
           # =====================================================
 
           def supabase_request(
               method,
-              table,
-              query="",
+              path,
               data=None
           ):
 
-              url = f"{BASE_URL}/rest/v1/{table}"
+              url = REST + path
 
-              if query:
-                  url += "?" + query
-
-              headers = {
-                  "apikey": SERVICE_KEY,
-                  "Authorization": f"Bearer {SERVICE_KEY}",
-                  "Content-Type": "application/json",
-              }
+              body = None
 
               if data is not None:
                   body = json.dumps(
                       data,
                       ensure_ascii=False
                   ).encode("utf-8")
-              else:
-                  body = None
 
               request = urllib.request.Request(
                   url,
                   data=body,
-                  headers=headers,
-                  method=method
+                  method=method,
+                  headers=HEADERS
               )
 
-              try:
+              with urllib.request.urlopen(
+                  request,
+                  timeout=30
+              ) as response:
 
-                  with urllib.request.urlopen(
-                      request,
-                      timeout=30
-                  ) as response:
+                  raw = response.read()
 
-                      raw = response.read().decode(
-                          "utf-8"
-                      )
+                  if not raw:
+                      return None
 
-                      if not raw:
-                          return []
-
-                      return json.loads(raw)
-
-              except urllib.error.HTTPError as e:
-
-                  error_body = e.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
-
-                  raise RuntimeError(
-                      f"Supabase HTTP {e.code}: {error_body}"
+                  return json.loads(
+                      raw.decode("utf-8")
                   )
 
 
-          # =====================================================
-          # JSON safe helper
-          # =====================================================
-
-          def safe_json(value):
-
-              if value is None:
-                  return {}
-
-              if isinstance(value, dict):
-                  return value
-
-              if isinstance(value, list):
-                  return value
-
-              if isinstance(value, str):
-
-                  try:
-                      return json.loads(value)
-
-                  except Exception:
-                      return {
-                          "text": value
-                      }
-
-              return value
+          def now():
+              return datetime.now(
+                  timezone.utc
+              ).strftime(
+                  "%Y-%m-%dT%H:%M:%SZ"
+              )
 
 
           # =====================================================
-          # 研究ルート正規化
-          #
-          # 同じ数学記号の表記揺れをある程度吸収
-          # =====================================================
-
-          def normalize_route(text):
-
-              text = str(text or "").lower()
-
-              replacements = {
-                  "　": " ",
-                  "\n": " ",
-                  "\r": " ",
-                  "⇒": "->",
-                  "→": "->",
-                  "⇔": "<->",
-              }
-
-              for a, b in replacements.items():
-                  text = text.replace(a, b)
-
-              text = re.sub(
-                  r"\s+",
-                  " ",
-                  text
-              )
-
-              # 長すぎる情報を除去して
-              # 「研究ルート」の特徴を抽出
-              text = re.sub(
-                  r"\d+(\.\d+)?",
-                  "#",
-                  text
-              )
-
-              return text.strip()
-
-
-          def route_fingerprint(
-              hypothesis,
-              approach,
-              proof_strategy,
-              question
-          ):
-
-              raw = "|".join([
-                  normalize_route(question),
-                  normalize_route(hypothesis),
-                  normalize_route(approach),
-                  normalize_route(proof_strategy),
-              ])
-
-              return hashlib.sha256(
-                  raw.encode("utf-8")
-              ).hexdigest()[:24]
-
-
-          # =====================================================
-          # OpenAlex / Crossref
-          #
-          # 論文検索はAI自身の記憶だけに任せない
-          # =====================================================
-
-          def search_openalex(query):
-
-              encoded = urllib.parse.quote(
-                  str(query)[:300]
-              )
-
-              url = (
-                  "https://api.openalex.org/works"
-                  f"?search={encoded}"
-                  "&per-page=5"
-              )
-
-              request = urllib.request.Request(
-                  url,
-                  headers={
-                      "User-Agent":
-                      "ResearchAILab/1.0"
-                  }
-              )
-
-              try:
-
-                  with urllib.request.urlopen(
-                      request,
-                      timeout=15
-                  ) as response:
-
-                      data = json.loads(
-                          response.read().decode(
-                              "utf-8"
-                          )
-                      )
-
-                  results = []
-
-                  for work in data.get(
-                      "results",
-                      []
-                  ):
-
-                      results.append({
-
-                          "title":
-                              work.get(
-                                  "display_name"
-                              ),
-
-                          "year":
-                              work.get(
-                                  "publication_year"
-                              ),
-
-                          "doi":
-                              work.get(
-                                  "doi"
-                              ),
-
-                          "type":
-                              work.get(
-                                  "type"
-                              )
-
-                      })
-
-                  return results
-
-              except Exception as e:
-
-                  print(
-                      "OpenAlex unavailable:",
-                      e
-                  )
-
-                  return []
-
-
-          def search_crossref(query):
-
-              encoded = urllib.parse.quote(
-                  str(query)[:300]
-              )
-
-              url = (
-                  "https://api.crossref.org/works"
-                  f"?query.bibliographic={encoded}"
-                  "&rows=5"
-              )
-
-              request = urllib.request.Request(
-                  url,
-                  headers={
-                      "User-Agent":
-                      "ResearchAILab/1.0"
-                  }
-              )
-
-              try:
-
-                  with urllib.request.urlopen(
-                      request,
-                      timeout=15
-                  ) as response:
-
-                      data = json.loads(
-                          response.read().decode(
-                              "utf-8"
-                          )
-                      )
-
-                  results = []
-
-                  for item in data.get(
-                      "message",
-                      {}
-                  ).get(
-                      "items",
-                      []
-                  ):
-
-                      title = (
-                          item.get(
-                              "title",
-                              [""]
-                          ) or [""]
-                      )[0]
-
-                      results.append({
-
-                          "title":
-                              title,
-
-                          "year":
-                              (
-                                  item.get(
-                                      "published-print"
-                                  )
-                                  or
-                                  item.get(
-                                      "published-online"
-                                  )
-                                  or
-                                  {}
-                              ).get(
-                                  "date-parts",
-                                  [[None]]
-                              )[0][0],
-
-                          "doi":
-                              item.get(
-                                  "DOI"
-                              )
-
-                      })
-
-                  return results
-
-              except Exception as e:
-
-                  print(
-                      "Crossref unavailable:",
-                      e
-                  )
-
-                  return []
-
-
-          # =====================================================
-          # OpenRouter
+          # AI呼び出し
           # =====================================================
 
           def call_ai(
-              system_prompt,
-              user_prompt
+              system,
+              prompt,
+              max_tokens=8000
           ):
 
               payload = {
@@ -504,149 +210,98 @@ jobs:
                   "messages": [
 
                       {
-                          "role":
-                              "system",
-
-                          "content":
-                              system_prompt
+                          "role": "system",
+                          "content": system
                       },
 
                       {
-                          "role":
-                              "user",
-
-                          "content":
-                              user_prompt
+                          "role": "user",
+                          "content": prompt
                       }
 
                   ],
 
-                  "temperature":
-                      0.15,
+                  "temperature": 0.15,
 
                   "max_tokens":
-                      12000
+                      max_tokens
+
               }
 
+              request =
+                  urllib.request.Request(
+                      "https://openrouter.ai/api/v1/chat/completions",
+                      data=json.dumps(
+                          payload
+                      ).encode("utf-8"),
+                      method="POST",
+                      headers={
+                          "Authorization":
+                              "Bearer " + OPENROUTER_KEY,
 
-              request = urllib.request.Request(
+                          "Content-Type":
+                              "application/json"
+                      }
+                  )
 
-                  "https://openrouter.ai/api/v1/chat/completions",
+              with urllib.request.urlopen(
+                  request,
+                  timeout=180
+              ) as response:
 
-                  data=json.dumps(
-                      payload,
-                      ensure_ascii=False
-                  ).encode("utf-8"),
+                  data = json.loads(
+                      response.read().decode("utf-8")
+                  )
 
-                  headers={
-
-                      "Authorization":
-                          f"Bearer {OPENROUTER_KEY}",
-
-                      "Content-Type":
-                          "application/json",
-
-                      "HTTP-Referer":
-                          "https://github.com",
-
-                      "X-Title":
-                          "Research AI Lab"
-
-                  },
-
-                  method="POST"
+              return (
+                  data["choices"][0]
+                  ["message"]
+                  ["content"]
               )
 
 
-              try:
+          # =====================================================
+          # JSON抽出
+          # =====================================================
 
-                  with urllib.request.urlopen(
-                      request,
-                      timeout=240
-                  ) as response:
+          def parse_ai_json(text):
 
-                      raw = response.read().decode(
-                          "utf-8"
-                      )
+              text = text.strip()
 
-              except urllib.error.HTTPError as e:
+              if text.startswith("```"):
+                  lines = text.splitlines()
 
-                  body = e.read().decode(
-                      "utf-8",
-                      errors="replace"
-                  )
+                  if lines:
+                      lines = lines[1:]
 
-                  raise RuntimeError(
-                      f"OpenRouter HTTP {e.code}: {body}"
-                  )
+                  if lines and lines[-1].strip() == "```":
+                      lines = lines[:-1]
 
-
-              data = json.loads(raw)
+                  text = "\n".join(lines)
 
               try:
-
-                  content = (
-                      data["choices"][0]
-                      ["message"]
-                      ["content"]
-                  )
+                  return json.loads(text)
 
               except Exception:
 
-                  raise RuntimeError(
-                      "Invalid OpenRouter response: "
-                      + json.dumps(
-                          data,
-                          ensure_ascii=False
-                      )[:3000]
-                  )
+                  start = text.find("{")
+                  end = text.rfind("}")
 
+                  if start >= 0 and end > start:
 
-              content = content.strip()
-
-              content = re.sub(
-                  r"^```(?:json)?\s*",
-                  "",
-                  content,
-                  flags=re.I
-              )
-
-              content = re.sub(
-                  r"\s*```$",
-                  "",
-                  content
-              )
-
-              try:
-
-                  return json.loads(
-                      content
-                  )
-
-              except json.JSONDecodeError:
-
-                  match = re.search(
-                      r"\{.*\}",
-                      content,
-                      re.S
-                  )
-
-                  if not match:
-                      raise RuntimeError(
-                          "AI returned invalid JSON."
+                      return json.loads(
+                          text[start:end + 1]
                       )
 
-                  return json.loads(
-                      match.group(0)
-                  )
+                  raise
 
 
           # =====================================================
-          # キュー
+          # ジョブ処理
           # =====================================================
 
           with open(
-              "/tmp/research/jobs_selected.json",
+              "/tmp/jobs.json",
               "r",
               encoding="utf-8"
           ) as f:
@@ -654,24 +309,26 @@ jobs:
               jobs = json.load(f)
 
 
-          print(
-              f"Processing {len(jobs)} queued job(s)."
-          )
-
-
-          # =====================================================
-          # 各ジョブ
-          # =====================================================
-
           for index, job in enumerate(jobs):
+
+              print("")
+              print(
+                  "======================================"
+              )
+              print(
+                  f"PROCESSING JOB {index + 1}/{len(jobs)}"
+              )
+              print(
+                  "======================================"
+              )
 
               job_id = job["id"]
 
               project_id = job["project_id"]
 
-              payload = safe_json(
-                  job.get("payload")
-              )
+              payload = job.get(
+                  "payload"
+              ) or {}
 
               theme = str(
                   payload.get(
@@ -684,79 +341,47 @@ jobs:
               if not theme:
 
                   print(
-                      f"[{job_id}] Theme empty."
+                      "Theme is empty. Marking failed."
                   )
 
                   supabase_request(
                       "PATCH",
-                      "research_jobs",
-                      f"id=eq.{job_id}&status=eq.queued",
+                      f"/research_jobs?id=eq.{job_id}",
                       {
                           "status":
                               "failed",
 
                           "error_message":
-                              "Research theme is empty.",
+                              "Research theme is empty",
 
                           "finished_at":
-                              datetime.now(
-                                  timezone.utc
-                              ).isoformat()
+                              now()
                       }
                   )
 
                   continue
 
 
-              print(
-                  f"\n========== JOB {index + 1}/{len(jobs)} =========="
-              )
-
-              print(
-                  "JOB:",
-                  job_id
-              )
-
-              print(
-                  "THEME:",
-                  theme
-              )
-
-
               # =================================================
-              # runningへ変更
-              #
-              # status=queued条件付きなので
-              # 同じジョブの二重取得をある程度防止
+              # ジョブをrunningへ
               # =================================================
 
-              started = datetime.now(
-                  timezone.utc
-              ).isoformat()
-
-
-              started_rows = supabase_request(
-
+              started = supabase_request(
                   "PATCH",
-
-                  "research_jobs",
-
-                  f"id=eq.{job_id}&status=eq.queued",
-
+                  f"/research_jobs?id=eq.{job_id}&status=eq.queued",
                   {
                       "status":
                           "running",
 
                       "started_at":
-                          started
+                          now()
                   }
               )
 
-
-              if not started_rows:
+              if not started:
 
                   print(
-                      "Job was already claimed. Skipping."
+                      "Job was already claimed."
                   )
 
                   continue
@@ -765,343 +390,255 @@ jobs:
               try:
 
                   # =============================================
-                  # 過去研究取得
+                  # 既存研究結果取得
                   # =============================================
 
-                  previous_results = supabase_request(
-
-                      "GET",
-
-                      "research_results",
-
-                      (
-                          "select="
-                          "id,title,hypothesis,"
-                          "content,evaluation,"
-                          "confidence_level,created_at"
-                          f"&project_id=eq.{project_id}"
-                          "&order=created_at.desc"
-                          "&limit=100"
-                      )
+                  encoded_project = urllib.parse.quote(
+                      project_id,
+                      safe=""
                   )
 
+                  previous = supabase_request(
+                      "GET",
+                      "/research_results"
+                      f"?select=id,title,hypothesis,"
+                      f"content,status,evaluation,"
+                      f"confidence_level,created_at"
+                      f"&project_id=eq.{encoded_project}"
+                      f"&order=created_at.desc"
+                      f"&limit=50"
+                  ) or []
+
 
                   # =============================================
-                  # AIメモ取得
+                  # AI研究メモ取得
                   # =============================================
 
                   memos = supabase_request(
-
                       "GET",
-
-                      "research_memos",
-
-                      (
-                          "select="
-                          "id,title,content,"
-                          "created_at,updated_at"
-                          f"&project_id=eq.{project_id}"
-                          "&order=created_at.desc"
-                          "&limit=100"
-                      )
-                  )
-
-
-                  print(
-                      "Previous results:",
-                      len(previous_results)
-                  )
-
-                  print(
-                      "Research memos:",
-                      len(memos)
-                  )
+                      "/research_memos"
+                      f"?select=id,title,content,"
+                      f"created_at,updated_at"
+                      f"&project_id=eq.{encoded_project}"
+                      f"&order=created_at.desc"
+                      f"&limit=30"
+                  ) or []
 
 
                   # =============================================
-                  # 過去研究を圧縮
+                  # 過去研究から重要情報抽出
                   # =============================================
 
                   previous_context = []
 
-                  for r in previous_results:
+                  for r in previous:
 
-                      content = safe_json(
-                          r.get("content")
+                      content = r.get(
+                          "content"
                       )
+
+                      if isinstance(
+                          content,
+                          str
+                      ):
+
+                          try:
+                              content =
+                                  json.loads(
+                                      content
+                                  )
+                          except:
+                              pass
+
 
                       previous_context.append({
 
-                          "id":
-                              r.get("id"),
-
                           "title":
-                              r.get("title"),
+                              r.get(
+                                  "title"
+                              ),
 
                           "hypothesis":
-                              r.get("hypothesis"),
+                              r.get(
+                                  "hypothesis"
+                              ),
 
                           "evaluation":
-                              r.get("evaluation"),
+                              r.get(
+                                  "evaluation"
+                              ),
 
                           "confidence":
                               r.get(
                                   "confidence_level"
                               ),
 
-                          "approach":
-                              content.get(
-                                  "approach"
-                              ) if isinstance(
-                                  content,
-                                  dict
-                              ) else None,
-
-                          "proof_strategy":
-                              content.get(
-                                  "proof_strategy"
-                              ) if isinstance(
-                                  content,
-                                  dict
-                              ) else None,
-
-                          "critical_gap":
-                              content.get(
-                                  "critical_gap"
-                              ) if isinstance(
-                                  content,
-                                  dict
-                              ) else None
+                          "content":
+                              content
 
                       })
 
 
+                  memo_context = [
+
+                      {
+                          "title":
+                              m.get("title"),
+
+                          "content":
+                              m.get("content")
+
+                      }
+
+                      for m in memos
+
+                  ]
+
+
                   # =============================================
-                  # 既存ルートの fingerprint
+                  # 研究ルートの抽出
                   # =============================================
 
-                  route_counts = {}
+                  routes = {}
 
-                  for r in previous_results:
+                  for r in previous:
 
-                      content = safe_json(
-                          r.get("content")
+                      content = r.get(
+                          "content"
                       )
 
-                      if not isinstance(
+                      if isinstance(
                           content,
-                          dict
+                          str
                       ):
-                          continue
 
-                      fp = route_fingerprint(
+                          try:
+                              content =
+                                  json.loads(
+                                      content
+                                  )
+                          except:
+                              content = {}
 
-                          r.get(
-                              "hypothesis",
-                              ""
-                          ),
 
+                      approach = str(
                           content.get(
                               "approach",
                               ""
-                          ),
+                          )
+                      )
 
+                      proof = str(
                           content.get(
                               "proof_strategy",
                               ""
-                          ),
+                          )
+                      )
 
-                          content.get(
-                              "research_question",
-                              theme
+                      route_key = (
+                          approach[:300]
+                          + "|"
+                          + proof[:300]
+                      )
+
+                      if route_key.strip("|"):
+
+                          routes[route_key] = (
+                              routes.get(
+                                  route_key,
+                                  0
+                              ) + 1
                           )
 
-                      )
 
-                      route_counts[fp] = (
-                          route_counts.get(
-                              fp,
-                              0
-                          ) + 1
-                      )
+                  blocked_routes = [
 
+                      route
 
-                  # =============================================
-                  # 論文検索
-                  #
-                  # AIが「知っているつもり」で
-                  # 論文名を捏造しないようにする
-                  # =============================================
+                      for route, count
+                      in routes.items()
 
-                  academic_query = (
-                      f"{theme} "
-                      "mathematical proof theorem conjecture"
-                  )
+                      if count >= 3
 
-
-                  openalex_results = search_openalex(
-                      academic_query
-                  )
-
-                  crossref_results = search_crossref(
-                      academic_query
-                  )
+                  ]
 
 
                   # =============================================
-                  # 研究メモ
+                  # 第1段階
+                  # 新規研究仮説生成
                   # =============================================
 
-                  memo_context = []
+                  system_prompt = """
 
-                  for memo in memos:
+You are the core research engine of an autonomous mathematical research laboratory.
 
-                      memo_context.append({
+Your task is NOT to merely answer the user's question.
 
-                          "title":
-                              memo.get(
-                                  "title"
-                              ),
+Your task is to perform genuine mathematical investigation.
 
-                          "content":
-                              memo.get(
-                                  "content"
-                              )
+Absolute rules:
 
-                      })
+1. Never claim a conjecture is proven unless every logical step is justified.
 
+2. Never present numerical evidence as proof.
 
-                  # =============================================
-                  # AI SYSTEM
-                  # =============================================
+3. Never invent papers, citations, authors, theorems, or references.
 
-                  system_prompt = r"""
-You are the core research engine of an autonomous
-mathematical research laboratory.
+4. Clearly distinguish:
+   known mathematical facts,
+   hypotheses,
+   conjectures,
+   computational evidence,
+   and deductions.
 
-Your objective is NOT to merely explain known mathematics.
+5. Do not simply reproduce a standard textbook proof.
 
-Your objective is to search for genuinely useful mathematical
-progress while remaining extremely conservative about claims.
+6. Search for genuinely different research directions.
 
-NON-NEGOTIABLE RULES:
+7. Always attempt to find counterexamples.
 
-1. Never call a conjecture a theorem.
+8. Explicitly identify the largest logical gap.
 
-2. Never claim a proof exists unless every logical step has
-   actually been justified.
+9. If the problem is currently unsolved, continue mathematical investigation rather than stopping at "unsolved".
 
-3. Never invent a paper, author, theorem, DOI, citation,
-   numerical result, or historical claim.
+10. Previous failed routes must influence the next research direction.
 
-4. If an academic source is supplied, distinguish:
-   - source existence
-   - source relevance
-   - what the source actually establishes.
+11. A route attempted three or more times must be treated as BLOCKED.
 
-5. Numerical experiments are evidence only.
-   They are never proof by themselves.
+12. Do not circumvent a blocked route by merely renaming it.
 
-6. Separate:
-   - established mathematical facts
-   - assumptions
-   - observations
-   - conjectures
-   - proposed deductions.
+13. Whenever possible, test multiple proof paradigms:
+    - direct proof
+    - contradiction
+    - contrapositive
+    - induction
+    - infinite descent
+    - extremal arguments
+    - algebraic reformulation
+    - analytic reformulation
+    - computational experiment
+    - cross-domain analogy
 
-7. Search for counterexamples before accepting a proposed claim.
+14. A proposed theorem must survive an explicit counterexample search.
 
-8. Attempt multiple proof perspectives where appropriate:
-   - direct proof
-   - contradiction
-   - contrapositive
-   - mathematical induction
-   - construction
-   - invariant
-   - extremal argument
-   - algebraic transformation
-   - analytic argument
-   - probabilistic argument
-   - computational experiment.
+15. A promising result must receive an independent verification attempt.
 
-9. Do not use a proof method merely because it sounds sophisticated.
-   Explain why it is logically applicable.
+16. Do not confuse "AI believes this is correct" with mathematical validity.
 
-10. If a strategy fails, identify exactly where it fails.
-
-11. Prefer a new research direction over repeating a previously
-    attempted direction.
-
-12. A result marked promising or high confidence is NOT automatically
-    mathematically correct.
-
-13. Any proposed breakthrough must survive an adversarial critique.
-
-14. Explicitly identify the strongest remaining gap.
-
-15. If the user asks about an unresolved problem such as the Riemann
-    Hypothesis, do NOT simply answer "unproved, therefore cannot answer."
-    Instead:
-      - state its established status,
-      - identify known structural facts,
-      - inspect the user's research context,
-      - propose concrete research questions,
-      - attempt original mathematical exploration,
-      - clearly label speculation.
-
-16. Do not merely reproduce textbook mathematics unless it is required
-    as a foundation for a genuinely new deduction.
-
-17. When previous research exists, actively compare the new route against
-    previous routes.
-
-18. A route that has already failed three or more times must be treated
-    as blocked unless the new proposal contains a materially different
-    mathematical mechanism.
-
-19. If a promising result was previously marked ⭕, treat it as a
-    hypothesis requiring independent re-verification, not as established
-    truth.
-
-20. Think adversarially against your own proposed proof.
-
-21. Look for hidden assumptions, domain restrictions, quantifier mistakes,
-    circular reasoning, invalid limits, unjustified interchange of
-    operations, and missing cases.
-
-22. Do not optimize for sounding intelligent.
-    Optimize for mathematical correctness.
-
-23. If there is insufficient information, say exactly what is missing.
-
-24. A genuinely negative result is valuable if it eliminates a research
-    route.
-
-25. The final answer must be valid JSON only.
+Return valid JSON only.
 """
 
 
-                  # =============================================
-                  # USER PROMPT
-                  # =============================================
+                  research_prompt = f"""
 
-                  user_prompt = f"""
-
-RESEARCH THEME:
+RESEARCH TARGET
 
 {theme}
 
 
-============================================================
 USER / CLAUDE RESEARCH MEMOS
-============================================================
 
-These notes may contain useful ideas from previous research
-or from another AI such as Claude.
-
-They are NOT authoritative mathematical facts.
-
-Treat them as hypotheses and verify them.
+These are notes supplied by the researcher.
 
 {json.dumps(
     memo_context,
@@ -1110,21 +647,7 @@ Treat them as hypotheses and verify them.
 )}
 
 
-============================================================
-PREVIOUS RESEARCH RESULTS
-============================================================
-
-The following results come from this laboratory.
-
-Do NOT blindly repeat them.
-
-Use them to identify:
-- failed approaches
-- promising approaches
-- contradictions
-- missing cases
-- unexplored directions
-- repeated routes
+PREVIOUS RESEARCH
 
 {json.dumps(
     previous_context,
@@ -1133,498 +656,295 @@ Use them to identify:
 )}
 
 
-============================================================
-ACADEMIC SEARCH RESULTS
-============================================================
+BLOCKED RESEARCH ROUTES
 
-These results came from external academic metadata services.
-
-They are evidence that records exist, not proof of their contents.
-
-OPENALEX:
+The following routes have already been attempted at least three times.
 
 {json.dumps(
-    openalex_results,
+    blocked_routes,
     ensure_ascii=False,
     indent=2
 )}
 
-
-CROSSREF:
-
-{json.dumps(
-    crossref_results,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-============================================================
-RESEARCH ROUTE BLOCKING
-============================================================
-
-Previously observed route fingerprints:
-
-{json.dumps(
-    route_counts,
-    ensure_ascii=False,
-    indent=2
-)}
-
-
-A route repeated three or more times is BLOCKED.
-
-Do not simply rename the same strategy.
-
-A new route must contain a materially different mathematical mechanism.
-
-
-============================================================
-MANDATORY ORIGINALITY CHECK
-============================================================
-
-Before proposing the main approach, perform these internal checks:
-
-A. Known-mathematics check
-   Is this merely a standard theorem or textbook argument?
-
-B. Previous-lab check
-   Has this laboratory already attempted essentially the same route?
-
-C. Route similarity check
-   Is this just a renamed version of a failed approach?
-
-D. Literature check
-   Does the supplied academic metadata suggest that the central idea
-   is already well known?
-
-E. Novel mechanism check
-   What mathematical mechanism is actually different?
-
-F. Counterexample check
-   What would falsify the proposed statement?
-
-G. Proof-gap check
-   What is the single most dangerous unproven step?
-
-H. Adversarial check
-   Try to destroy your own argument.
-
-
-============================================================
-MANDATORY PROOF STRATEGY COMPARISON
-============================================================
-
-Consider at least three applicable strategies when possible.
-
-For each:
-
-- method
-- why applicable
-- strongest step
-- weakest step
-- possible counterexample
-- whether it genuinely differs from previous work
-
-
-============================================================
-MANDATORY MATHEMATICAL MODEL / EXPERIMENT
-============================================================
-
-If the problem benefits from visualization or computation,
-describe a mathematical model that could be:
-
-- transformed
-- parameterized
-- visualized in 3D
-- tested numerically
-- subjected to physical-style simulation
-
-However:
-
-physical-style simulation is exploratory evidence only.
-
-Never convert simulation behavior into proof.
-
-
-============================================================
-MANDATORY OUTPUT
-============================================================
-
-Return ONLY JSON with this structure:
-
-{{
-  "title": "",
-  "hypothesis": "",
-
-  "research_question": "",
-
-  "novelty_assessment": {{
-    "known_mathematics_risk": "",
-    "previous_route_risk": "",
-    "literature_overlap_risk": "",
-    "new_mechanism": ""
-  }},
-
-  "known_facts": [],
-
-  "assumptions": [],
-
-  "observations": [],
-
-  "approach": [],
-
-  "proof_strategy": [],
-
-  "alternative_proof_strategies": [],
-
-  "counterexample_strategy": [],
-
-  "counterexample_results": [],
-
-  "cross_domain_connection": [],
-
-  "mathematical_model": {{
-
-    "model_type": "",
-
-    "equations": [],
-
-    "parameters": [],
-
-    "transformations": [],
-
-    "visualization": "",
-
-    "physical_simulation_idea": ""
-
-  }},
-
-  "literature_check": {{
-
-    "potentially_relevant_sources": [],
-
-    "what_is_verified": [],
-
-    "what_is_not_verified": []
-
-  }},
-
-  "previous_research_comparison": [],
-
-  "route_status": "",
-
-  "critical_gap": "",
-
-  "adversarial_critique": [],
-
-  "next_steps": [],
-
-  "status": "",
-
-  "confidence": 0,
-
-  "requires_independent_reverification": true
-}}
-
-Allowed status:
-
-candidate
-promising
-uncertain
-rejected
-needs_verification
-reverification_required
 
 IMPORTANT:
 
-Even if the argument appears extremely strong,
-do not state that an unresolved problem has been solved.
+Do not repeat a blocked route.
 
-For unresolved problems, the default should be
-needs_verification or reverification_required
-unless a complete independently checkable proof has
-actually been established.
+Do not merely rename a blocked route.
+
+Find a mathematically distinct route.
+
+
+Generate a research investigation with:
+
+1. precise research question
+2. known facts
+3. genuinely new hypothesis
+4. assumptions
+5. proposed mathematical transformation
+6. proof strategy
+7. at least two alternative proof strategies
+8. counterexample strategy
+9. independent verification strategy
+10. potential computational experiment
+11. cross-domain connection
+12. critical logical gap
+13. relation to known mathematics
+14. next research steps
+
+
+The research must be exploratory.
+
+If the target is a famous unsolved problem such as the Riemann Hypothesis,
+do NOT answer merely that it is unsolved.
+
+Instead investigate a specific mathematical subproblem or potentially useful
+reformulation while explicitly stating that no proof has been established.
+
+
+Return:
+
+{
+  "title": "...",
+  "research_question": "...",
+  "hypothesis": "...",
+  "known_facts": [],
+  "assumptions": [],
+  "approach": [],
+  "proof_strategy": "...",
+  "alternative_proof_strategies": [],
+  "counterexample_strategy": [],
+  "independent_verification": [],
+  "computational_experiment": [],
+  "cross_domain_connection": [],
+  "critical_gap": "...",
+  "relation_to_known_mathematics": "...",
+  "next_steps": [],
+  "route_signature": "...",
+  "status": "candidate|promising|uncertain|rejected|needs_verification",
+  "confidence": 0.0
+}
 """
 
 
-                  # =============================================
-                  # AI CALL
-                  # =============================================
-
-                  print(
-                      "Calling OpenRouter..."
-                  )
-
-
-                  result = call_ai(
-                      system_prompt,
-                      user_prompt
-                  )
-
-
-                  # =============================================
-                  # AI result validation
-                  # =============================================
-
-                  if not isinstance(
-                      result,
-                      dict
-                  ):
-
-                      raise RuntimeError(
-                          "AI result is not an object."
+                  raw =
+                      call_ai(
+                          system_prompt,
+                          research_prompt,
+                          9000
                       )
 
 
-                  required_keys = [
-
-                      "title",
-                      "hypothesis",
-                      "research_question",
-                      "known_facts",
-                      "assumptions",
-                      "approach",
-                      "proof_strategy",
-                      "counterexample_strategy",
-                      "critical_gap",
-                      "next_steps",
-                      "status",
-                      "confidence"
-
-                  ]
-
-
-                  missing = [
-
-                      key
-
-                      for key in required_keys
-
-                      if key not in result
-
-                  ]
-
-
-                  if missing:
-
-                      raise RuntimeError(
-                          "Missing AI fields: "
-                          + ", ".join(
-                              missing
-                          )
-                      )
+                  result =
+                      parse_ai_json(raw)
 
 
                   # =============================================
-                  # Confidence
+                  # 研究結果の基本検査
                   # =============================================
+
+                  confidence = 0.0
 
                   try:
+                      confidence =
+                          float(
+                              result.get(
+                                  "confidence",
+                                  0
+                              )
+                          )
+                  except:
+                      confidence = 0.0
 
-                      confidence = float(
-                          result.get(
-                              "confidence",
-                              0
+                  confidence =
+                      max(
+                          0.0,
+                          min(
+                              1.0,
+                              confidence
                           )
                       )
 
-                  except Exception:
-
-                      confidence = 0
-
-
-                  confidence = max(
-                      0,
-                      min(
-                          1,
-                          confidence
-                      )
-                  )
-
-
-                  # =============================================
-                  # Status
-                  # =============================================
 
                   status = str(
                       result.get(
                           "status",
-                          "needs_verification"
+                          "uncertain"
                       )
-                  ).lower().strip()
+                  ).lower()
 
 
-                  allowed_statuses = {
-
-                      "candidate",
-                      "promising",
-                      "uncertain",
-                      "rejected",
-                      "needs_verification",
-                      "reverification_required"
-
-                  }
-
-
-                  if status not in allowed_statuses:
-
-                      status = (
-                          "needs_verification"
-                      )
-
-
-                  # =============================================
-                  # 重要:
-                  #
-                  # AIが「⭕」を出しても
-                  # 未解決問題なら自動的に
-                  # 再検証要求へ戻す
-                  # =============================================
-
-                  requires_reverification = (
-                      bool(
-                          result.get(
-                              "requires_independent_reverification",
-                              True
-                          )
-                      )
-                  )
-
-
-                  # =============================================
-                  # route fingerprint
-                  # =============================================
-
-                  fp = route_fingerprint(
-
+                  route_signature = str(
                       result.get(
-                          "hypothesis",
+                          "route_signature",
                           ""
-                      ),
-
-                      result.get(
-                          "approach",
-                          ""
-                      ),
-
-                      result.get(
-                          "proof_strategy",
-                          ""
-                      ),
-
-                      result.get(
-                          "research_question",
-                          theme
                       )
-
-                  )
-
-
-                  previous_count = route_counts.get(
-                      fp,
-                      0
-                  )
+                  ).strip()
 
 
                   # =============================================
-                  # 3回以上の同一ルート遮断
+                  # 3回以上ルート遮断
                   # =============================================
 
-                  if previous_count >= 3:
+                  route_count = 0
 
-                      result[
-                          "route_blocked"
-                      ] = True
+                  if route_signature:
 
-                      result[
-                          "route_block_reason"
-                      ] = (
-                          "Essentially the same research route "
-                          "has already been attempted at least "
-                          "three times."
+                      for route in routes:
+
+                          if (
+                              route_signature[:250]
+                              == route[:250]
+                          ):
+
+                              route_count =
+                                  routes[route]
+
+
+                  if route_count >= 3:
+
+                      result["status"] =
+                          "rejected"
+
+                      result["critical_gap"] = (
+                          "This research route has "
+                          "already been attempted "
+                          "three or more times and is blocked."
                       )
+
+                      result["next_steps"] = [
+                          "Use a mathematically distinct route."
+                      ]
 
                       status = "rejected"
 
-                      confidence = 0
-
-
-                  else:
-
-                      result[
-                          "route_blocked"
-                      ] = False
-
 
                   # =============================================
-                  # originality score
+                  # 評価
                   # =============================================
 
-                  novelty = result.get(
-                      "novelty_assessment",
-                      {}
-                  )
-
-
-                  if not isinstance(
-                      novelty,
-                      dict
+                  if (
+                      status == "promising"
+                      and confidence >= 0.8
                   ):
 
-                      novelty = {}
+                      evaluation = "⭕️"
 
-
-                  # =============================================
-                  # ⭕判定
-                  #
-                  # 「promising + 0.8」だけでは
-                  # ⭕にしない
-                  # =============================================
-
-                  evaluation = "△"
-
-
-                  if status == "rejected":
+                  elif status == "rejected":
 
                       evaluation = "❌"
 
-                  elif (
-
-                      status == "promising"
-
-                      and confidence >= 0.8
-
-                      and not requires_reverification
-
-                      and previous_count < 3
-
-                      and result.get(
-                          "critical_gap"
-                      )
-
-                  ):
-
-                      # ここではなお△寄りにする。
-                      # 数学的証明をAIだけで確定しない。
-                      evaluation = "△"
-
                   else:
 
                       evaluation = "△"
 
 
                   # =============================================
-                  # confidence level
+                  # ⭕️候補の独立再検証
                   # =============================================
 
-                  confidence_level = round(
-                      confidence * 5
-                  )
+                  verification = None
+
+                  if evaluation == "⭕️":
+
+                      verification_prompt = f"""
+
+You are an independent mathematical verifier.
+
+Do NOT assume the previous research is correct.
+
+Research:
+
+{json.dumps(
+    result,
+    ensure_ascii=False,
+    indent=2
+)}
+
+
+Perform an independent verification.
+
+Try specifically:
+
+1. contradiction
+2. contrapositive
+3. induction where applicable
+4. direct derivation
+5. counterexample search
+6. hidden assumption detection
+7. edge cases
+8. dependency on known theorems
+9. whether the conclusion actually follows
+10. whether the result merely restates known mathematics
+
+Return JSON:
+
+{{
+  "verified": true,
+  "independent_reasoning": [],
+  "counterexample_found": false,
+  "logical_gap_found": false,
+  "gap": "...",
+  "final_assessment": "..."
+}}
+
+Never claim a proof exists unless the proof is actually complete.
+"""
+
+
+                      verification_raw =
+                          call_ai(
+                              """
+You are an extremely strict independent
+mathematical verifier.
+
+Never rubber-stamp another AI's result.
+""",
+                              verification_prompt,
+                              7000
+                          )
+
+
+                      verification =
+                          parse_ai_json(
+                              verification_raw
+                          )
+
+
+                      if (
+                          not verification.get(
+                              "verified",
+                              False
+                          )
+                          or verification.get(
+                              "counterexample_found",
+                              False
+                          )
+                          or verification.get(
+                              "logical_gap_found",
+                              False
+                          )
+                      ):
+
+                          evaluation = "△"
+
+                          result["status"] =
+                              "needs_verification"
+
+                          result["critical_gap"] = (
+                              verification.get(
+                                  "gap"
+                              )
+                              or
+                              result.get(
+                                  "critical_gap"
+                              )
+                          )
 
 
                   # =============================================
-                  # content
+                  # 保存用content
                   # =============================================
 
                   content = {
@@ -1646,12 +966,6 @@ actually been established.
                               []
                           ),
 
-                      "observations":
-                          result.get(
-                              "observations",
-                              []
-                          ),
-
                       "approach":
                           result.get(
                               "approach",
@@ -1660,8 +974,7 @@ actually been established.
 
                       "proof_strategy":
                           result.get(
-                              "proof_strategy",
-                              []
+                              "proof_strategy"
                           ),
 
                       "alternative_proof_strategies":
@@ -1676,9 +989,15 @@ actually been established.
                               []
                           ),
 
-                      "counterexample_results":
+                      "independent_verification":
                           result.get(
-                              "counterexample_results",
+                              "independent_verification",
+                              []
+                          ),
+
+                      "computational_experiment":
+                          result.get(
+                              "computational_experiment",
                               []
                           ),
 
@@ -1688,45 +1007,14 @@ actually been established.
                               []
                           ),
 
-                      "mathematical_model":
-                          result.get(
-                              "mathematical_model",
-                              {}
-                          ),
-
-                      "literature_check":
-                          result.get(
-                              "literature_check",
-                              {}
-                          ),
-
-                      "previous_research_comparison":
-                          result.get(
-                              "previous_research_comparison",
-                              []
-                          ),
-
-                      "route_fingerprint":
-                          fp,
-
-                      "route_previous_count":
-                          previous_count,
-
-                      "route_blocked":
-                          result.get(
-                              "route_blocked",
-                              False
-                          ),
-
                       "critical_gap":
                           result.get(
                               "critical_gap"
                           ),
 
-                      "adversarial_critique":
+                      "relation_to_known_mathematics":
                           result.get(
-                              "adversarial_critique",
-                              []
+                              "relation_to_known_mathematics"
                           ),
 
                       "next_steps":
@@ -1735,11 +1023,11 @@ actually been established.
                               []
                           ),
 
-                      "novelty_assessment":
-                          novelty,
+                      "route_signature":
+                          route_signature,
 
-                      "requires_independent_reverification":
-                          requires_reverification,
+                      "verification":
+                          verification,
 
                       "source_job_id":
                           job_id,
@@ -1750,8 +1038,14 @@ actually been established.
                   }
 
 
+                  confidence_level =
+                      round(
+                          confidence * 5
+                      )
+
+
                   # =============================================
-                  # 保存レコード
+                  # 研究結果保存
                   # =============================================
 
                   record = {
@@ -1790,131 +1084,46 @@ actually been established.
                       "confidence_level":
                           confidence_level,
 
+                      # ⭕️は人間が消すまで残す
                       "is_human_saved":
-                          False
-
-                  }
-
-
-                  # =============================================
-                  # ⭕候補の扱い
-                  #
-                  # 現段階ではAI単独で「証明済み」
-                  # とは扱わない。
-                  #
-                  # 将来的に独立検証workerを追加する
-                  # 前提の安全な設計。
-                  # =============================================
-
-                  if evaluation == "⭕":
-
-                      content[
-                          "requires_independent_reverification"
-                      ] = True
-
-                      content[
-                          "verification_stage"
-                      ] = "independent_reverification"
-
-                      record[
-                          "evaluation"
-                      ] = "△"
-
-
-                  # =============================================
-                  # 保存
-                  # =============================================
-
-                  saved = supabase_request(
-
-                      "POST",
-
-                      "research_results",
-
-                      "",
-
-                      record
-
-                  )
-
-
-                  print(
-                      "Research result saved:",
-                      job_id
-                  )
-
-
-                  # =============================================
-                  # ジョブ結果
-                  # =============================================
-
-                  finished = datetime.now(
-                      timezone.utc
-                  ).isoformat()
-
-
-                  job_result = {
-
-                      "result_id":
-                          saved[0]["id"]
-                          if saved
-                          and isinstance(
-                              saved,
-                              list
-                          )
-                          and saved[0].get("id")
-                          else None,
-
-                      "evaluation":
-                          record[
-                              "evaluation"
-                          ],
-
-                      "status":
-                          status,
-
-                      "confidence":
-                          confidence,
-
-                      "route_fingerprint":
-                          fp,
-
-                      "route_previous_count":
-                          previous_count,
-
-                      "route_blocked":
-                          result.get(
-                              "route_blocked",
-                              False
-                          )
+                          evaluation == "⭕️"
 
                   }
 
 
                   supabase_request(
+                      "POST",
+                      "/research_results",
+                      record
+                  )
 
+
+                  # =============================================
+                  # ジョブ完了
+                  # =============================================
+
+                  supabase_request(
                       "PATCH",
-
-                      "research_jobs",
-
-                      (
-                          f"id=eq.{job_id}"
-                          "&status=eq.running"
-                      ),
-
+                      f"/research_jobs?id=eq.{job_id}&status=eq.running",
                       {
-
                           "status":
                               "completed",
 
-                          "result":
-                              job_result,
-
                           "finished_at":
-                              finished
+                              now(),
 
+                          "result":
+                              {
+                                  "evaluation":
+                                      evaluation,
+
+                                  "confidence":
+                                      confidence,
+
+                                  "route":
+                                      route_signature
+                              }
                       }
-
                   )
 
 
@@ -1923,81 +1132,74 @@ actually been established.
                       job_id
                   )
 
-
-              except Exception as e:
-
-                  # =============================================
-                  # 個別ジョブ失敗
-                  #
-                  # 他のキューを巻き込まない
-                  # =============================================
-
                   print(
-                      "JOB FAILED:",
-                      job_id
+                      "Evaluation:",
+                      evaluation
                   )
 
                   print(
-                      repr(e)
+                      "Confidence:",
+                      confidence
                   )
 
+
+              except Exception as error:
+
+                  print(
+                      "JOB ERROR:",
+                      repr(error)
+                  )
+
+
+                  # =============================================
+                  # 失敗処理
+                  # =============================================
 
                   try:
 
                       supabase_request(
-
                           "PATCH",
-
-                          "research_jobs",
-
-                          (
-                              f"id=eq.{job_id}"
-                              "&status=eq.running"
-                          ),
-
+                          f"/research_jobs?id=eq.{job_id}&status=eq.running",
                           {
-
                               "status":
                                   "failed",
 
                               "error_message":
-                                  str(e)[
-                                      :4000
-                                  ],
+                                  str(error)[:2000],
 
                               "finished_at":
-                                  datetime.now(
-                                      timezone.utc
-                                  ).isoformat()
-
+                                  now()
                           }
-
                       )
 
-                  except Exception as save_error:
+                  except Exception as secondary:
 
                       print(
-                          "Failed to mark job:",
-                          save_error
+                          "Could not mark job failed:",
+                          repr(secondary)
                       )
 
 
+          print("")
           print(
-              "\nAll selected research jobs processed."
+              "======================================"
+          )
+          print(
+              " ALL QUEUED JOBS PROCESSED"
+          )
+          print(
+              "======================================"
           )
 
           PY
 
 
       # =========================================================
-      # 4. 最終確認
+      # 5. Worker終了
       # =========================================================
 
       - name: Worker finished
         if: always()
-
         run: |
-
-          echo "======================================"
-          echo "Math Research Lab worker finished."
-          echo "======================================"
+          echo "Research worker finished."
+          echo "Queued jobs processed: ${{ steps.get_jobs.outputs.jobs_count }}"
