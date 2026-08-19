@@ -1,7 +1,29 @@
 /* =========================================================
    Research AI Lab
-   Enhanced app.js
+   app.js - Enhanced Version
+   =========================================================
+
+   基本構成
+
+   Browser
+      ↓
+   Supabase
+      ↓
+   research_jobs
+      ↓
+   GitHub Actions Worker
+      ↓
+   OpenRouter
+      ↓
+   research_results
+
+   ※ Edge Functionは使用しない
    ========================================================= */
+
+
+/* =========================================================
+   CONFIG
+========================================================= */
 
 const SUPABASE_URL =
   "https://beadajbimgpephqszbfy.supabase.co";
@@ -11,6 +33,17 @@ const SUPABASE_PUBLISHABLE_KEY =
 
 const PROJECT_ID =
   "ab429192-27d2-47e4-9ad7-08b639f45120";
+
+
+const MAX_VISIBLE_RESULTS = 100;
+
+const POLL_INTERVAL = 5000;
+
+const ACTIVE_JOB_STORAGE =
+  "active_research_job";
+
+const ACTIVE_JOBS_STORAGE =
+  "active_research_jobs";
 
 
 /* =========================================================
@@ -36,46 +69,29 @@ const sb =
 
 let activeJobId =
   localStorage.getItem(
-    "active_research_job"
+    ACTIVE_JOB_STORAGE
   ) || null;
+
+
+let activeJobIds =
+  loadActiveJobIds();
+
 
 let pollTimer = null;
 
 let lastResults = [];
 
-let selectedResult = null;
-
-let researchStarting = false;
-
-let connectionOK = false;
+let currentResult = null;
 
 
 /* =========================================================
-   CONSTANTS
+   UTILITIES
 ========================================================= */
 
-const MAX_VISIBLE_RESULTS = 100;
+function $(id) {
+  return document.getElementById(id);
+}
 
-const POLL_INTERVAL = 5000;
-
-const MAX_CONTEXT_RESULTS = 30;
-
-const MAX_CONTEXT_MEMOS = 20;
-
-const ROUTE_BLOCK_LIMIT = 3;
-
-
-/* =========================================================
-   DOM HELPER
-========================================================= */
-
-const $ = id =>
-  document.getElementById(id);
-
-
-/* =========================================================
-   SAFE HTML
-========================================================= */
 
 function esc(value) {
 
@@ -94,17 +110,15 @@ function esc(value) {
 }
 
 
-/* =========================================================
-   DATE
-========================================================= */
-
 function formatDate(value) {
 
   if (!value)
     return "—";
 
+
   const date =
     new Date(value);
+
 
   if (
     Number.isNaN(
@@ -114,6 +128,7 @@ function formatDate(value) {
     return "—";
   }
 
+
   return date.toLocaleString(
     "ja-JP"
   );
@@ -121,20 +136,18 @@ function formatDate(value) {
 }
 
 
-/* =========================================================
-   JSON
-========================================================= */
-
 function parseJson(value) {
 
   if (!value)
     return {};
+
 
   if (
     typeof value === "object"
   ) {
     return value;
   }
+
 
   try {
 
@@ -151,33 +164,33 @@ function parseJson(value) {
 }
 
 
-/* =========================================================
-   RESULT SYMBOL
-========================================================= */
-
 function resultSymbol(result) {
 
+  const evaluation =
+    String(
+      result?.evaluation || ""
+    );
+
+
   if (
-    result?.evaluation === "⭕️" ||
-    result?.evaluation === "⭕"
+    evaluation === "⭕️" ||
+    evaluation === "⭕"
   ) {
     return "⭕";
   }
 
+
   if (
-    result?.evaluation === "❌"
+    evaluation === "❌"
   ) {
     return "❌";
   }
+
 
   return "△";
 
 }
 
-
-/* =========================================================
-   STATUS
-========================================================= */
 
 function setStatus(
   text,
@@ -187,11 +200,14 @@ function setStatus(
   const box =
     $("statusBox");
 
+
   if (!box)
     return;
 
+
   box.textContent =
     text || "";
+
 
   box.className =
     `status ${type}`;
@@ -199,30 +215,164 @@ function setStatus(
 }
 
 
-/* =========================================================
-   CONNECTION
-========================================================= */
-
 function setConnection(
   ok,
   text
 ) {
 
-  connectionOK = !!ok;
-
   const textElement =
     $("connectionText");
 
-  const dotElement =
+
+  const dot =
     $("connectionDot");
+
 
   if (textElement)
     textElement.textContent =
       text;
 
-  if (dotElement)
-    dotElement.className =
+
+  if (dot) {
+
+    dot.className =
       `dot ${ok ? "ok" : "bad"}`;
+
+  }
+
+}
+
+
+/* =========================================================
+   ACTIVE JOB STORAGE
+========================================================= */
+
+function loadActiveJobIds() {
+
+  try {
+
+    const raw =
+      localStorage.getItem(
+        ACTIVE_JOBS_STORAGE
+      );
+
+
+    if (!raw)
+      return [];
+
+
+    const ids =
+      JSON.parse(raw);
+
+
+    if (!Array.isArray(ids))
+      return [];
+
+
+    return ids.filter(Boolean);
+
+  } catch {
+
+    return [];
+
+  }
+
+}
+
+
+function saveActiveJobIds() {
+
+  try {
+
+    localStorage.setItem(
+      ACTIVE_JOBS_STORAGE,
+      JSON.stringify(
+        activeJobIds
+      )
+    );
+
+  } catch {
+
+    // localStorage failure should
+    // never break research UI
+
+  }
+
+}
+
+
+function addActiveJob(id) {
+
+  if (!id)
+    return;
+
+
+  if (
+    !activeJobIds.includes(id)
+  ) {
+
+    activeJobIds.push(id);
+
+  }
+
+
+  activeJobId = id;
+
+
+  try {
+
+    localStorage.setItem(
+      ACTIVE_JOB_STORAGE,
+      id
+    );
+
+  } catch {}
+
+
+  saveActiveJobIds();
+
+}
+
+
+function removeActiveJob(id) {
+
+  activeJobIds =
+    activeJobIds.filter(
+      x => x !== id
+    );
+
+
+  if (
+    activeJobId === id
+  ) {
+
+    activeJobId =
+      activeJobIds[0] || null;
+
+
+    try {
+
+      if (activeJobId) {
+
+        localStorage.setItem(
+          ACTIVE_JOB_STORAGE,
+          activeJobId
+        );
+
+      } else {
+
+        localStorage.removeItem(
+          ACTIVE_JOB_STORAGE
+        );
+
+      }
+
+    } catch {}
+
+  }
+
+
+  saveActiveJobIds();
 
 }
 
@@ -251,6 +401,7 @@ async function checkConnection() {
             "project_id",
             PROJECT_ID
           ),
+
 
         new Promise(
           (_, reject) =>
@@ -283,14 +434,16 @@ async function checkConnection() {
   } catch (error) {
 
     console.error(
-      "Supabase:",
+      "Supabase connection:",
       error
     );
+
 
     setConnection(
       false,
       "SUPABASE ERROR"
     );
+
 
     return false;
 
@@ -333,17 +486,22 @@ function showPage(page) {
   if (page === "history")
     loadHistory();
 
+
   if (page === "saved")
     loadSaved();
+
 
   if (page === "jobs")
     loadJobs();
 
+
   if (page === "memory")
     loadMemory();
 
+
   if (page === "routes")
     loadRoutes();
+
 
   if (page === "memos")
     loadMemos();
@@ -352,819 +510,47 @@ function showPage(page) {
 
 
 /* =========================================================
-   FETCH RESEARCH CONTEXT
+   RESULT QUERY
 ========================================================= */
 
-/*
-   AI研究時に、
-
-   ・過去の研究
-   ・AIメモ
-   ・⭕️研究
-   ・失敗研究
-
-   を取得する。
-
-   これによって同じ研究を何度も
-   最初からやり直すことを防ぐ。
-*/
-
-async function buildResearchContext() {
-
-  const context = {
-    previousResults: [],
-    savedResults: [],
-    memos: [],
-    blockedRoutes: []
-  };
-
-
-  /* -----------------------------------------
-     過去研究
-  ----------------------------------------- */
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from("research_results")
-        .select(
-          "id,title,hypothesis,content,evaluation,confidence_level,status,created_at"
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(
-          MAX_CONTEXT_RESULTS
-        );
-
-
-    if (!error)
-      context.previousResults =
-        data || [];
-
-  } catch (error) {
-
-    console.warn(
-      "Previous research context unavailable:",
-      error
-    );
-
-  }
-
-
-  /* -----------------------------------------
-     ⭕️保存研究
-  ----------------------------------------- */
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from("research_results")
-        .select(
-          "id,title,hypothesis,content,evaluation,confidence_level,status,created_at"
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .eq(
-          "evaluation",
-          "⭕️"
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(
-          MAX_CONTEXT_RESULTS
-        );
-
-
-    if (!error)
-      context.savedResults =
-        data || [];
-
-  } catch (error) {
-
-    console.warn(
-      "Saved research context unavailable:",
-      error
-    );
-
-  }
-
-
-  /* -----------------------------------------
-     AIメモ
-  ----------------------------------------- */
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from("research_memos")
-        .select(
-          "id,title,content,created_at"
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(
-          MAX_CONTEXT_MEMOS
-        );
-
-
-    if (!error)
-      context.memos =
-        data || [];
-
-  } catch (error) {
-
-    console.warn(
-      "Memo context unavailable:",
-      error
-    );
-
-  }
-
-
-  /* -----------------------------------------
-     ルート情報
-  ----------------------------------------- */
-
-  context.blockedRoutes =
-    await getBlockedRoutes(
-      context.previousResults
-    );
-
-
-  return context;
-
-}
-
-
-/* =========================================================
-   ROUTE NORMALIZATION
-========================================================= */
-
-function normalizeRoute(route) {
-
-  if (!route)
-    return "";
-
-  return String(route)
-    .toLowerCase()
-    .trim()
-    .replace(
-      /\s+/g,
-      " "
-    );
-
-}
-
-
-/* =========================================================
-   GET BLOCKED ROUTES
-========================================================= */
-
-/*
-   research_resultsに保存された
-   research_routeを解析し、
-
-   同じルートが3回以上登場した場合
-   blockedRoutesへ登録する。
-
-   ※既存DBを壊さないよう、
-   新しいテーブルには依存しない。
-*/
-
-async function getBlockedRoutes(
-  results = []
-) {
-
-  const routeCounts =
-    new Map();
-
-
-  for (
-    const result of results
-  ) {
-
-    const content =
-      parseJson(
-        result.content
-      );
-
-
-    const route =
-      normalizeRoute(
-        content.research_route ||
-        content.route ||
-        content.approach ||
-        ""
-      );
-
-
-    if (!route)
-      continue;
-
-
-    const current =
-      routeCounts.get(route) || 0;
-
-    routeCounts.set(
-      route,
-      current + 1
-    );
-
-  }
-
-
-  return [...routeCounts.entries()]
-    .filter(
-      ([, count]) =>
-        count >= ROUTE_BLOCK_LIMIT
-    )
-    .map(
-      ([route, count]) => ({
-        route,
-        count,
-        blocked: true
-      })
-    );
-
-}
-
-
-/* =========================================================
-   RESEARCH CONTEXT TEXT
-========================================================= */
-
-function contextToPrompt(
-  context
-) {
-
-  const previous =
-    context.previousResults
-      .map(
-        result => {
-
-          const content =
-            parseJson(
-              result.content
-            );
-
-          return `
-[PREVIOUS RESEARCH]
-title: ${result.title || ""}
-evaluation: ${result.evaluation || "△"}
-hypothesis: ${result.hypothesis || ""}
-route: ${
-            content.research_route ||
-            content.approach ||
-            ""
-          }
-critical_gap: ${
-            content.critical_gap ||
-            ""
-          }
-          `.trim();
-
-        }
-      )
-      .join("\n\n");
-
-
-  const saved =
-    context.savedResults
-      .map(
-        result => {
-
-          return `
-[SAVED POSITIVE RESULT]
-title: ${result.title || ""}
-hypothesis: ${result.hypothesis || ""}
-content: ${JSON.stringify(
-            parseJson(result.content)
-          )}
-          `.trim();
-
-        }
-      )
-      .join("\n\n");
-
-
-  const memos =
-    context.memos
-      .map(
-        memo => `
-[RESEARCH MEMO]
-${memo.title || "無題"}
-${memo.content || ""}
-        `.trim()
-      )
-      .join("\n\n");
-
-
-  const blocked =
-    context.blockedRoutes
-      .map(
-        route =>
-          `[BLOCKED ROUTE ×${route.count}]\n${route.route}`
-      )
-      .join("\n");
-
-
-  return `
-==============================
-RESEARCH MEMORY
-==============================
-
-${previous || "No previous research."}
-
-${saved || "No saved positive research."}
-
-${memos || "No research memos."}
-
-==============================
-BLOCKED ROUTES
-==============================
-
-${blocked || "No blocked routes."}
-
-==============================
-END MEMORY
-==============================
-`.trim();
-
-}
-
-
-/* =========================================================
-   RESEARCH QUEUE
-========================================================= */
-
-async function enqueueResearch(
-  theme,
-  options = {}
-) {
-
-  const cleanTheme =
-    String(theme || "")
-      .trim();
-
-
-  if (!cleanTheme)
-    throw new Error(
-      "研究テーマが空です。"
-    );
-
-
-  const {
-    priority = 10,
-    mode = "autonomous_research",
-    parentResultId = null,
-    reverification = false,
-    proofMethod = null
-  } = options;
-
-
-  const payload = {
-
-    theme:
-      cleanTheme,
-
-    source:
-      "Research AI Lab",
-
-    mode,
-
-    reverification,
-
-    parent_result_id:
-      parentResultId,
-
-    proof_method:
-      proofMethod,
-
-    created_from:
-      "web"
-
-  };
-
-
-  const {
-    data,
-    error
-  } =
-    await sb
-      .from("research_jobs")
-      .insert({
-
-        project_id:
-          PROJECT_ID,
-
-        job_type:
-          reverification
-            ? "reverification"
-            : "research_cycle",
-
-        status:
-          "queued",
-
-        priority,
-
-        payload
-
-      })
-      .select(
-        "id,project_id,job_type,status,priority,payload,result,error_message,started_at,finished_at,created_at"
-      )
-      .single();
-
-
-  if (error)
-    throw error;
-
-
-  return data;
-
-}
-
-
-/* =========================================================
-   START RESEARCH
-========================================================= */
-
-async function startResearch() {
-
-  if (researchStarting) {
-
-    setStatus(
-      "研究登録処理中です。二重登録を防止しました。",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  const input =
-    $("questionInput");
-
-
-  const theme =
-    input?.value
-      ?.trim() || "";
-
-
-  if (!theme) {
-
-    setStatus(
-      "研究テーマを入力してください。",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  researchStarting = true;
-
-
-  if ($("researchButton"))
-    $("researchButton")
-      .disabled = true;
-
-  if ($("stopButton"))
-    $("stopButton")
-      .disabled = false;
-
-
-  setStatus(
-    "研究メモ・過去研究を確認しています..."
-  );
-
-
-  try {
-
-    /*
-      ここでAIへ渡す研究コンテキストを
-      先に構築する。
-
-      ※実際のAI処理はGitHub Actions。
-    */
-
-    const context =
-      await buildResearchContext();
-
-
-    /*
-      ブラウザから直接AIを呼ばない。
-
-      Supabaseには研究ジョブと
-      AI研究コンテキストだけを保存する。
-    */
-
-    const job =
-      await enqueueResearch(
-        theme,
-        {
-          priority: 10
-        }
-      );
-
-
-    /*
-      UIで参照できるように
-      一時的にcontextをlocalStorageへ保存。
-
-      APIキー等は絶対に保存しない。
-    */
-
-    try {
-
-      localStorage.setItem(
-        `research_context_${job.id}`,
-        JSON.stringify({
-          blockedRoutes:
-            context.blockedRoutes,
-          resultCount:
-            context.previousResults.length,
-          savedCount:
-            context.savedResults.length,
-          memoCount:
-            context.memos.length,
-          createdAt:
-            new Date().toISOString()
-        })
-      );
-
-    } catch {
-      /* localStorage failure is non-fatal */
-    }
-
-
-    activeJobId =
-      job.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
-    renderJob(job);
-
-
-    setStatus(
-      "研究をキューに登録しました。バックグラウンド研究を開始します。",
-      "success"
-    );
-
-
-    startPolling();
-
-    await loadJobs();
-
-  } catch (error) {
-
-    console.error(
-      "Start research:",
-      error
-    );
-
-
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = false;
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = true;
-
-
-    setStatus(
-      `研究開始失敗: ${error.message}`,
-      "error"
-    );
-
-  } finally {
-
-    researchStarting = false;
-
-  }
-
-}
-
-
-/* =========================================================
-   REVERIFICATION
-========================================================= */
-
-/*
-   ⭕️研究を別の証明戦略で再検証する。
-
-   ブラウザから直接AIを呼ばず、
-   GitHub Actionsのキューへ登録する。
-*/
-
-async function requestReverification(
-  result,
-  proofMethod = null
-) {
-
-  if (!result)
-    return;
-
-
-  const method =
-    proofMethod ||
-    "independent_verification";
-
-
-  try {
-
-    const job =
-      await enqueueResearch(
-        `
-Reverify the following mathematical research result.
-
-Title:
-${result.title || ""}
-
-Hypothesis:
-${result.hypothesis || ""}
-
-Result:
-${JSON.stringify(
-          parseJson(result.content),
-          null,
-          2
-        )}
-
-Verification method:
-${method}
-
-Do NOT assume the previous result is correct.
-Independently check every logical step.
-Search for counterexamples.
-Identify hidden assumptions.
-Determine whether the result actually follows.
-        `.trim(),
-        {
-          priority: 20,
-          reverification: true,
-          parentResultId:
-            result.id,
-          proofMethod:
-            method
-        }
-      );
-
-
-    setStatus(
-      `再検証ジョブを登録しました。方法: ${method}`,
-      "success"
-    );
-
-
-    /*
-      現在のジョブとして追跡。
-    */
-
-    activeJobId =
-      job.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
-    renderJob(job);
-
-    startPolling();
-
-    await loadJobs();
-
-  } catch (error) {
-
-    console.error(
-      "Reverification:",
-      error
-    );
-
-    setStatus(
-      `再検証登録失敗: ${error.message}`,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   PROOF METHOD MENU
-========================================================= */
-
-function createReverificationActions(
-  result
-) {
-
-  return `
-
-    <div class="reverification-actions">
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="direct"
-      >
-        直接証明
-      </button>
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="contradiction"
-      >
-        背理法
-      </button>
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="contrapositive"
-      >
-        対偶
-      </button>
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="induction"
-      >
-        数学的帰納法
-      </button>
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="counterexample"
-      >
-        反例探索
-      </button>
-
-      <button
-        class="button secondary proof-reverify"
-        data-method="independent"
-      >
-        独立再検証
-      </button>
-
-    </div>
-
-  `;
-
-}
+const RESULT_COLUMNS =
+  [
+    "id",
+    "project_id",
+    "title",
+    "hypothesis",
+    "content",
+    "status",
+    "evaluation",
+    "confidence_level",
+    "is_human_saved",
+    "created_at",
+    "updated_at"
+  ].join(",");
 
 
 /* =========================================================
    HISTORY
+=========================================================
+
+   通常結果:
+     最新100件
+
+   ⭕:
+     100件制限とは別に保持
+
+   これにより、
+   「画面に最大100件」
+   と
+   「⭕は消えない」
+   を両立する。
 ========================================================= */
 
 async function loadHistory() {
 
   const box =
     $("historyList");
+
 
   if (!box)
     return;
@@ -1178,28 +564,28 @@ async function loadHistory() {
 
   try {
 
-    /*
-      ⭕️は100件制限から除外。
+    const [
 
-      まず最新100件を取得。
-      その後、⭕️を追加取得する。
+      normalResponse,
 
-      これにより重要な⭕️研究を
-      画面から消さない。
-    */
+      savedResponse
 
-    const {
-      data,
-      error
-    } =
-      await sb
+    ] = await Promise.all([
+
+      sb
         .from("research_results")
-        .select(
-          "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at"
-        )
+        .select(RESULT_COLUMNS)
         .eq(
           "project_id",
           PROJECT_ID
+        )
+        .neq(
+          "evaluation",
+          "⭕"
+        )
+        .neq(
+          "evaluation",
+          "⭕️"
         )
         .order(
           "created_at",
@@ -1209,128 +595,121 @@ async function loadHistory() {
         )
         .limit(
           MAX_VISIBLE_RESULTS
-        );
+        ),
 
 
-    if (error)
-      throw error;
-
-
-    let rows =
-      data || [];
-
-
-    /*
-      ⭕️を別取得。
-
-      is_human_saved=trueの⭕️も
-      必ず表示する。
-    */
-
-    const {
-      data: positiveData,
-      error:
-        positiveError
-    } =
-      await sb
+      sb
         .from("research_results")
-        .select(
-          "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at"
-        )
+        .select(RESULT_COLUMNS)
         .eq(
           "project_id",
           PROJECT_ID
         )
-        .eq(
+        .in(
           "evaluation",
-          "⭕️"
+          [
+            "⭕",
+            "⭕️"
+          ]
         )
         .order(
           "created_at",
           {
             ascending: false
           }
-        );
+        )
+
+    ]);
 
 
-    if (!positiveError &&
-        positiveData?.length) {
+    if (normalResponse.error)
+      throw normalResponse.error;
 
-      const map =
-        new Map();
 
-      rows.forEach(
-        row =>
-          map.set(
-            row.id,
-            row
+    if (savedResponse.error)
+      throw savedResponse.error;
+
+
+    const normal =
+      normalResponse.data || [];
+
+
+    const positive =
+      savedResponse.data || [];
+
+
+    /*
+      ⭕は常に表示対象。
+
+      通常結果は最新100件。
+
+      ⭕は100件制限の外側に置く。
+    */
+
+    const merged = [
+      ...positive,
+      ...normal
+    ];
+
+
+    const unique =
+      Array.from(
+        new Map(
+          merged.map(
+            item => [
+              item.id,
+              item
+            ]
           )
+        ).values()
       );
 
-      positiveData.forEach(
-        row =>
-          map.set(
-            row.id,
-            row
-          )
-      );
 
-      rows =
-        [...map.values()]
-          .sort(
-            (a, b) =>
-              new Date(
-                b.created_at || 0
-              ) -
-              new Date(
-                a.created_at || 0
-              )
-          );
-
-    }
+    unique.sort(
+      (a, b) =>
+        new Date(
+          b.created_at || 0
+        ) -
+        new Date(
+          a.created_at || 0
+        )
+    );
 
 
     lastResults =
-      rows;
+      unique;
 
 
-    const countElement =
+    const count =
       $("historyCount");
 
 
-    if (countElement) {
+    if (count) {
 
-      countElement.textContent =
-        `${rows.length}件`;
+      count.textContent =
+        `${unique.length}件`;
 
     }
 
 
     renderResults(
       box,
-      rows
+      unique
     );
 
 
-    if (rows.length) {
+    if (unique.length) {
 
       renderDetail(
-        rows[0]
+        unique[0]
       );
 
     } else {
 
-      const detail =
-        $("detail");
-
-      if (detail) {
-
-        detail.innerHTML =
-          `<div class="empty">
-            まだ研究結果がありません。
-          </div>`;
-
-      }
+      $("detail").innerHTML =
+        `<div class="empty">
+          まだ研究結果がありません。
+        </div>`;
 
     }
 
@@ -1340,6 +719,7 @@ async function loadHistory() {
       "History:",
       error
     );
+
 
     box.innerHTML =
       `<div class="error">
@@ -1361,6 +741,7 @@ async function loadSaved() {
   const box =
     $("savedList");
 
+
   if (!box)
     return;
 
@@ -1380,7 +761,7 @@ async function loadSaved() {
       await sb
         .from("research_results")
         .select(
-          "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at"
+          RESULT_COLUMNS
         )
         .eq(
           "project_id",
@@ -1428,6 +809,7 @@ async function loadJobs() {
 
   const box =
     $("jobsList");
+
 
   if (!box)
     return;
@@ -1480,57 +862,55 @@ async function loadJobs() {
 
 
     box.innerHTML =
-      data.map(job => {
+      data.map(
+        job => {
 
-        const status =
-          job.status ||
-          "unknown";
-
-
-        const theme =
-          job.payload?.theme ||
-          job.job_type ||
-          "Research";
+          const status =
+            job.status ||
+            "unknown";
 
 
-        return `
+          const theme =
+            job.payload?.theme ||
+            job.job_type ||
+            "Research";
 
-          <div class="job-row">
 
-            <div>
+          return `
 
-              <b>
-                ${esc(theme)}
-              </b>
+            <div class="job-row">
 
-              <small>
-                ${formatDate(
-                  job.created_at
-                )}
-              </small>
+              <div>
 
-              <small>
-                ${
-                  job.job_type ===
-                  "reverification"
-                    ? "再検証"
-                    : "通常研究"
-                }
-              </small>
+                <b>
+                  ${esc(theme)}
+                </b>
+
+                <small>
+                  ${formatDate(
+                    job.created_at
+                  )}
+                </small>
+
+                <small>
+                  ID:
+                  ${esc(job.id)}
+                </small>
+
+              </div>
+
+              <span
+                class="badge ${esc(status)}"
+              >
+                ${esc(status)}
+              </span>
 
             </div>
 
-            <span
-              class="badge ${esc(status)}"
-            >
-              ${esc(status)}
-            </span>
+          `;
 
-          </div>
-
-        `;
-
-      }).join("");
+        }
+      ).join("");
 
 
   } catch (error) {
@@ -1555,17 +935,20 @@ async function loadMemory() {
   const box =
     $("memoryList");
 
+
   if (!box)
     return;
 
 
   try {
 
-    const {
-      count,
-      error
-    } =
-      await sb
+    const [
+      resultsCount,
+      positiveCount,
+      memoCount
+    ] = await Promise.all([
+
+      sb
         .from("research_results")
         .select(
           "id",
@@ -1577,15 +960,62 @@ async function loadMemory() {
         .eq(
           "project_id",
           PROJECT_ID
-        );
+        ),
 
 
-    if (error)
-      throw error;
+      sb
+        .from("research_results")
+        .select(
+          "id",
+          {
+            count: "exact",
+            head: true
+          }
+        )
+        .eq(
+          "project_id",
+          PROJECT_ID
+        )
+        .in(
+          "evaluation",
+          [
+            "⭕",
+            "⭕️"
+          ]
+        ),
 
 
-    const context =
-      await buildResearchContext();
+      sb
+        .from("research_memos")
+        .select(
+          "id",
+          {
+            count: "exact",
+            head: true
+          }
+        )
+        .eq(
+          "project_id",
+          PROJECT_ID
+        )
+
+    ]);
+
+
+    if (resultsCount.error)
+      throw resultsCount.error;
+
+
+    const total =
+      resultsCount.count || 0;
+
+
+    const positive =
+      positiveCount.count || 0;
+
+
+    const memos =
+      memoCount.count || 0;
 
 
     box.innerHTML = `
@@ -1593,7 +1023,7 @@ async function loadMemory() {
       <div class="memory-stat">
 
         <strong>
-          ${count ?? 0}
+          ${total}
         </strong>
 
         <span>
@@ -1606,11 +1036,11 @@ async function loadMemory() {
       <div class="memory-stat">
 
         <strong>
-          ${context.memos.length}
+          ${positive}
         </strong>
 
         <span>
-          AIが参照可能な研究メモ
+          ⭕ 再検証対象
         </span>
 
       </div>
@@ -1619,11 +1049,11 @@ async function loadMemory() {
       <div class="memory-stat">
 
         <strong>
-          ${context.blockedRoutes.length}
+          ${memos}
         </strong>
 
         <span>
-          遮断された研究ルート
+          研究メモ
         </span>
 
       </div>
@@ -1636,20 +1066,23 @@ async function loadMemory() {
         </h3>
 
         <p>
-          過去研究、研究メモ、⭕️研究、
-          失敗ルートを次の研究の文脈として利用します。
+          過去研究を単なる履歴としてではなく、
+          次の研究で参照できる知識として扱うための領域です。
         </p>
 
         <p>
-          同じ研究ルートが
-          ${ROUTE_BLOCK_LIMIT}回以上繰り返された場合、
-          そのルートを遮断対象として扱います。
+          ⭕の研究は通常の100件表示制限とは別に保持し、
+          再検証候補として扱える構造になっています。
         </p>
 
         <p>
-          ⭕️研究は単純に正しいと固定せず、
-          別の証明方法・反例探索・論理検査による
-          再検証対象にできます。
+          今後のWorker側では、
+          既知結果、
+          失敗したルート、
+          反例、
+          論理的な穴、
+          成功した証明戦略
+          を研究前に参照させます。
         </p>
 
       </div>
@@ -1660,6 +1093,7 @@ async function loadMemory() {
 
     box.innerHTML =
       `<div class="error">
+        AIメモリ取得失敗<br>
         ${esc(error.message)}
       </div>`;
 
@@ -1677,212 +1111,66 @@ async function loadRoutes() {
   const box =
     $("routesList");
 
+
   if (!box)
     return;
 
 
-  try {
+  box.innerHTML = `
 
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from("research_results")
-        .select(
-          "id,title,evaluation,content,created_at"
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(500);
+    <div class="graph-placeholder">
 
-
-    if (error)
-      throw error;
-
-
-    const routes =
-      new Map();
-
-
-    (data || []).forEach(
-      result => {
-
-        const content =
-          parseJson(
-            result.content
-          );
-
-
-        const route =
-          normalizeRoute(
-            content.research_route ||
-            content.route ||
-            content.approach
-          );
-
-
-        if (!route)
-          return;
-
-
-        const current =
-          routes.get(route) || {
-            count: 0,
-            evaluations: [],
-            latest: result.created_at
-          };
-
-
-        current.count++;
-
-        current.evaluations
-          .push(
-            result.evaluation
-          );
-
-
-        routes.set(
-          route,
-          current
-        );
-
-      }
-    );
-
-
-    const routeArray =
-      [...routes.entries()]
-        .sort(
-          (a, b) =>
-            b[1].count -
-            a[1].count
-        );
-
-
-    if (!routeArray.length) {
-
-      box.innerHTML = `
-
-        <div class="graph-placeholder">
-
-          <div class="graph-node main">
-            RESEARCH
-          </div>
-
-          <div class="graph-line"></div>
-
-          <div class="graph-node">
-            HYPOTHESIS
-          </div>
-
-          <div class="graph-line"></div>
-
-          <div class="graph-node">
-            VERIFICATION
-          </div>
-
-          <div class="graph-line"></div>
-
-          <div class="graph-node">
-            EVALUATION
-          </div>
-
-          <p>
-            研究ルート情報を待っています。
-          </p>
-
-        </div>
-
-      `;
-
-      return;
-
-    }
-
-
-    box.innerHTML = `
-
-      <div class="route-list">
-
-        ${routeArray
-          .map(
-            ([route, info]) => {
-
-              const blocked =
-                info.count >=
-                ROUTE_BLOCK_LIMIT;
-
-
-              return `
-
-                <article class="route-card">
-
-                  <div>
-
-                    <strong>
-                      ${blocked
-                        ? "🚫"
-                        : "→"}
-                    </strong>
-
-                    <span>
-                      ${esc(route)}
-                    </span>
-
-                  </div>
-
-                  <div>
-
-                    <span>
-                      ${info.count}回
-                    </span>
-
-                    <span>
-                      ${
-                        blocked
-                          ? "遮断"
-                          : "使用可能"
-                      }
-                    </span>
-
-                  </div>
-
-                </article>
-
-              `;
-
-            }
-          )
-          .join("")}
-
+      <div class="graph-node main">
+        RESEARCH
       </div>
 
-    `;
+      <div class="graph-line"></div>
 
-  } catch (error) {
+      <div class="graph-node">
+        NOVELTY CHECK
+      </div>
 
-    box.innerHTML =
-      `<div class="error">
-        ルート取得失敗<br>
-        ${esc(error.message)}
-      </div>`;
+      <div class="graph-line"></div>
 
-  }
+      <div class="graph-node">
+        HYPOTHESIS
+      </div>
+
+      <div class="graph-line"></div>
+
+      <div class="graph-node">
+        COUNTEREXAMPLE
+      </div>
+
+      <div class="graph-line"></div>
+
+      <div class="graph-node">
+        PROOF
+      </div>
+
+      <div class="graph-line"></div>
+
+      <div class="graph-node">
+        EVALUATION
+      </div>
+
+      <p>
+        研究探索ルート基盤
+      </p>
+
+      <small>
+        ※実際のルート遮断処理はWorker側で行います。
+      </small>
+
+    </div>
+
+  `;
 
 }
 
 
 /* =========================================================
-   RESULTS
+   RESULT LIST
 ========================================================= */
 
 function renderResults(
@@ -1890,11 +1178,7 @@ function renderResults(
   rows
 ) {
 
-  if (!box)
-    return;
-
-
-  if (!rows.length) {
+  if (!rows?.length) {
 
     box.innerHTML =
       `<div class="empty">
@@ -1907,52 +1191,55 @@ function renderResults(
 
 
   box.innerHTML =
-    rows.map(result => `
+    rows.map(
+      result => `
 
-      <button
-        class="result-row"
-        data-id="${esc(result.id)}"
-      >
+        <button
+          class="result-row"
+          data-id="${esc(result.id)}"
+        >
 
-        <span class="symbol">
-          ${resultSymbol(result)}
-        </span>
+          <span class="symbol">
+            ${resultSymbol(result)}
+          </span>
 
-        <span class="result-main">
+          <span class="result-main">
 
-          <b>
-            ${esc(
-              result.title ||
-              "無題"
-            )}
-          </b>
+            <b>
+              ${esc(
+                result.title ||
+                "無題"
+              )}
+            </b>
 
-          <small>
-            ${formatDate(
-              result.created_at
-            )}
+            <small>
+              ${formatDate(
+                result.created_at
+              )}
 
-            ・信頼度
+              ・信頼度
 
-            ${Number(
-              result.confidence_level ?? 0
-            )}/5
+              ${Number(
+                result.confidence_level ?? 0
+              )}/5
+            </small>
 
-          </small>
+          </span>
 
-        </span>
+          <span>
 
-        <span>
-          ${
-            result.is_human_saved
-              ? "★"
-              : ""
-          }
-        </span>
+            ${
+              result.is_human_saved
+                ? "★"
+                : ""
+            }
 
-      </button>
+          </span>
 
-    `).join("");
+        </button>
+
+      `
+    ).join("");
 
 
   box
@@ -1968,15 +1255,23 @@ function renderResults(
           const result =
             rows.find(
               item =>
-                item.id ===
-                element.dataset.id
+                String(item.id) ===
+                String(
+                  element.dataset.id
+                )
             );
 
 
-          if (result)
+          if (result) {
+
+            currentResult =
+              result;
+
             renderDetail(
               result
             );
+
+          }
 
         }
       );
@@ -1990,12 +1285,10 @@ function renderResults(
    DETAIL
 ========================================================= */
 
-function renderDetail(
-  result
-) {
+function renderDetail(result) {
 
-  selectedResult =
-    result;
+  if (!result)
+    return;
 
 
   const content =
@@ -2004,16 +1297,19 @@ function renderDetail(
     );
 
 
+  const verification =
+    content.verification ||
+    {};
+
+
+  const novelty =
+    content.novelty_check ||
+    {};
+
+
   const model =
-    content.model ||
     content.math_model ||
-    content.visualization ||
     null;
-
-
-  const isPositive =
-    result.evaluation === "⭕️" ||
-    result.evaluation === "⭕";
 
 
   $("detail").innerHTML = `
@@ -2088,21 +1384,58 @@ function renderDetail(
     </section>
 
 
-    <section>
+    ${
+      novelty &&
+      Object.keys(novelty).length
+        ? `
 
-      <label>
-        研究内容
-      </label>
+          <section>
 
-      <pre>${esc(
-        JSON.stringify(
-          content,
-          null,
-          2
-        )
-      )}</pre>
+            <label>
+              新規性チェック
+            </label>
 
-    </section>
+            <pre>${esc(
+              JSON.stringify(
+                novelty,
+                null,
+                2
+              )
+            )}</pre>
+
+          </section>
+
+        `
+        : ""
+    }
+
+
+    ${
+      verification &&
+      Object.keys(
+        verification
+      ).length
+        ? `
+
+          <section>
+
+            <label>
+              検証戦略
+            </label>
+
+            <pre>${esc(
+              JSON.stringify(
+                verification,
+                null,
+                2
+              )
+            )}</pre>
+
+          </section>
+
+        `
+        : ""
+    }
 
 
     ${
@@ -2130,31 +1463,21 @@ function renderDetail(
     }
 
 
-    ${
-      isPositive
-        ? `
+    <section>
 
-          <section>
+      <label>
+        研究内容
+      </label>
 
-            <label>
-              ⭕️ 再検証
-            </label>
+      <pre>${esc(
+        JSON.stringify(
+          content,
+          null,
+          2
+        )
+      )}</pre>
 
-            <p>
-              この結果を独立に再検証できます。
-              前回の結果を正しいと仮定せず、
-              別の証明方法・反例探索などから確認します。
-            </p>
-
-            ${createReverificationActions(
-              result
-            )}
-
-          </section>
-
-        `
-        : ""
-    }
+    </section>
 
 
     <div class="detail-actions">
@@ -2169,6 +1492,22 @@ function renderDetail(
             : "★ 保存"
         }
       </button>
+
+
+      ${
+        resultSymbol(result) === "⭕"
+          ? `
+
+            <button
+              id="reverifyDetail"
+              class="button secondary"
+            >
+              ⟳ 再検証
+            </button>
+
+          `
+          : ""
+      }
 
     </div>
 
@@ -2190,22 +1529,19 @@ function renderDetail(
   }
 
 
-  document
-    .querySelectorAll(
-      ".proof-reverify"
-    )
-    .forEach(button => {
+  const reverifyButton =
+    $("reverifyDetail");
 
-      button.addEventListener(
-        "click",
-        () =>
-          requestReverification(
-            result,
-            button.dataset.method
-          )
-      );
 
-    });
+  if (reverifyButton) {
+
+    reverifyButton.addEventListener(
+      "click",
+      () =>
+        reverifyResult(result)
+    );
+
+  }
 
 }
 
@@ -2214,9 +1550,7 @@ function renderDetail(
    SAVE RESULT
 ========================================================= */
 
-async function toggleSave(
-  result
-) {
+async function toggleSave(result) {
 
   try {
 
@@ -2260,13 +1594,341 @@ async function toggleSave(
 
 
     await loadHistory();
-
     await loadSaved();
 
   } catch (error) {
 
     setStatus(
       `保存変更失敗: ${error.message}`,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   REVERIFY POSITIVE RESULT
+=========================================================
+
+   ⭕をもう一度研究キューへ送る。
+
+   Worker側で、
+
+   ・背理法
+   ・対偶
+   ・数学的帰納法
+   ・反例探索
+   ・既知結果比較
+   ・別証明
+   ・境界条件確認
+
+   を行わせるための再検証ジョブ。
+========================================================= */
+
+async function reverifyResult(
+  result
+) {
+
+  if (!result)
+    return;
+
+
+  try {
+
+    const content =
+      parseJson(
+        result.content
+      );
+
+
+    const {
+      data,
+      error
+    } =
+      await sb
+        .from("research_jobs")
+        .insert({
+
+          project_id:
+            PROJECT_ID,
+
+          job_type:
+            "reverification",
+
+          status:
+            "queued",
+
+          priority:
+            100,
+
+          payload: {
+
+            theme:
+              result.hypothesis ||
+              result.title,
+
+            source:
+              "positive_result_reverification",
+
+            source_result_id:
+              result.id,
+
+            mode:
+              "independent_verification",
+
+            verification_methods: [
+
+              "contradiction",
+
+              "contrapositive",
+
+              "mathematical_induction",
+
+              "counterexample_search",
+
+              "boundary_case_check",
+
+              "independent_derivation"
+
+            ],
+
+            previous_result:
+              content
+
+          }
+
+        })
+        .select()
+        .single();
+
+
+    if (error)
+      throw error;
+
+
+    addActiveJob(
+      data.id
+    );
+
+
+    setStatus(
+      "⭕研究を再検証キューへ登録しました。",
+      "success"
+    );
+
+
+    renderJob(data);
+
+
+    startPolling();
+
+
+  } catch (error) {
+
+    console.error(
+      "Reverification:",
+      error
+    );
+
+
+    setStatus(
+      `再検証登録失敗: ${error.message}`,
+      "error"
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   START RESEARCH
+========================================================= */
+
+async function startResearch() {
+
+  const input =
+    $("questionInput");
+
+
+  const theme =
+    input.value.trim();
+
+
+  if (!theme) {
+
+    setStatus(
+      "研究テーマを入力してください。",
+      "error"
+    );
+
+    return;
+
+  }
+
+
+  $("researchButton")
+    .disabled = true;
+
+
+  $("stopButton")
+    .disabled = false;
+
+
+  setStatus(
+    "研究ジョブをキューへ登録しています..."
+  );
+
+
+  try {
+
+    const {
+      data,
+      error
+    } =
+      await sb
+        .from("research_jobs")
+        .insert({
+
+          project_id:
+            PROJECT_ID,
+
+          job_type:
+            "research_cycle",
+
+          status:
+            "queued",
+
+          priority:
+            10,
+
+          payload: {
+
+            theme,
+
+            source:
+              "Research AI Lab",
+
+            mode:
+              "autonomous_research",
+
+            /*
+              Workerに渡す研究原則
+            */
+
+            research_rules: {
+
+              avoid_known_mathematics: true,
+
+              novelty_check: true,
+
+              literature_verification: true,
+
+              counterexample_search: true,
+
+              contradiction_check: true,
+
+              contrapositive_check: true,
+
+              induction_check: true,
+
+              boundary_case_check: true,
+
+              independent_derivation: true,
+
+              avoid_unjustified_leaps: true,
+
+              no_fake_citations: true,
+
+              no_unproven_claims: true,
+
+              route_repetition_limit: 3
+
+            },
+
+            /*
+              数学モデル探索
+            */
+
+            model_exploration: {
+
+              enabled: true,
+
+              transformation: true,
+
+              visualization_data: true,
+
+              physical_analogy: true,
+
+              parameter_exploration: true
+
+            }
+
+          }
+
+        })
+        .select(
+          "id,project_id,job_type,status,priority,payload,result,error_message,started_at,finished_at,created_at"
+        )
+        .single();
+
+
+    if (error)
+      throw error;
+
+
+    addActiveJob(
+      data.id
+    );
+
+
+    renderJob(data);
+
+
+    setStatus(
+      "研究をキューに登録しました。バックグラウンド処理を待機しています。",
+      "success"
+    );
+
+
+    /*
+      入力欄を空にすることで
+      次の研究をすぐ投入できる。
+    */
+
+    input.value = "";
+
+
+    startPolling();
+
+
+    /*
+      ジョブ一覧も更新
+    */
+
+    loadJobs();
+
+
+  } catch (error) {
+
+    console.error(
+      "Start research:",
+      error
+    );
+
+
+    $("researchButton")
+      .disabled = false;
+
+
+    $("stopButton")
+      .disabled = true;
+
+
+    setStatus(
+      `研究開始失敗: ${error.message}`,
       "error"
     );
 
@@ -2293,9 +1955,12 @@ async function stopResearch() {
   }
 
 
-  if ($("stopButton"))
-    $("stopButton")
-      .disabled = true;
+  const jobId =
+    activeJobId;
+
+
+  $("stopButton")
+    .disabled = true;
 
 
   try {
@@ -2320,7 +1985,7 @@ async function stopResearch() {
         })
         .eq(
           "id",
-          activeJobId
+          jobId
         )
         .eq(
           "project_id",
@@ -2333,9 +1998,7 @@ async function stopResearch() {
             "running"
           ]
         )
-        .select(
-          "id,status"
-        );
+        .select("id,status");
 
 
     if (error)
@@ -2359,13 +2022,18 @@ async function stopResearch() {
     }
 
 
-    await refreshActiveJob();
+    removeActiveJob(
+      jobId
+    );
+
+
+    await refreshActiveJobs();
+
 
   } catch (error) {
 
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = false;
+    $("stopButton")
+      .disabled = false;
 
 
     setStatus(
@@ -2387,6 +2055,7 @@ function renderJob(job) {
   const panel =
     $("jobPanel");
 
+
   if (!panel)
     return;
 
@@ -2396,43 +2065,38 @@ function renderJob(job) {
   );
 
 
-  if ($("jobId"))
-    $("jobId")
-      .textContent =
-      job.id || "—";
+  $("jobId")
+    .textContent =
+    job.id || "—";
 
 
-  if ($("jobStatus"))
-    $("jobStatus")
-      .textContent =
-      String(
-        job.status ||
-        "unknown"
-      ).toUpperCase();
+  $("jobStatus")
+    .textContent =
+    String(
+      job.status ||
+      "unknown"
+    ).toUpperCase();
 
 
-  if ($("jobCreated"))
-    $("jobCreated")
-      .textContent =
-      formatDate(
-        job.created_at
-      );
+  $("jobCreated")
+    .textContent =
+    formatDate(
+      job.created_at
+    );
 
 
-  if ($("jobStarted"))
-    $("jobStarted")
-      .textContent =
-      formatDate(
-        job.started_at
-      );
+  $("jobStarted")
+    .textContent =
+    formatDate(
+      job.started_at
+    );
 
 
-  if ($("jobFinished"))
-    $("jobFinished")
-      .textContent =
-      formatDate(
-        job.finished_at
-      );
+  $("jobFinished")
+    .textContent =
+    formatDate(
+      job.finished_at
+    );
 
 
   let percent = 0;
@@ -2450,7 +2114,7 @@ function renderJob(job) {
       percent = 10;
 
       text =
-        "バックグラウンド待機中";
+        "GitHub Actions待機中";
 
       break;
 
@@ -2497,34 +2161,45 @@ function renderJob(job) {
   }
 
 
-  if ($("progressValue"))
+  if ($("progressValue")) {
+
     $("progressValue")
       .style.width =
       `${percent}%`;
 
+  }
 
-  if ($("progressPercent"))
+
+  if ($("progressPercent")) {
+
     $("progressPercent")
       .textContent =
       `${percent}%`;
 
+  }
 
-  if ($("progressText"))
+
+  if ($("progressText")) {
+
     $("progressText")
       .textContent =
       text;
+
+  }
 
 }
 
 
 /* =========================================================
-   REFRESH ACTIVE JOB
+   REFRESH SINGLE JOB
 ========================================================= */
 
-async function refreshActiveJob() {
+async function refreshJob(
+  jobId
+) {
 
-  if (!activeJobId)
-    return;
+  if (!jobId)
+    return null;
 
 
   try {
@@ -2540,7 +2215,7 @@ async function refreshActiveJob() {
         )
         .eq(
           "id",
-          activeJobId
+          jobId
         )
         .eq(
           "project_id",
@@ -2555,29 +2230,22 @@ async function refreshActiveJob() {
 
     if (!data) {
 
-      activeJobId =
-        null;
-
-      localStorage.removeItem(
-        "active_research_job"
+      removeActiveJob(
+        jobId
       );
 
-      stopPolling();
-
-      if ($("researchButton"))
-        $("researchButton")
-          .disabled = false;
-
-      if ($("stopButton"))
-        $("stopButton")
-          .disabled = true;
-
-      return;
+      return null;
 
     }
 
 
-    renderJob(data);
+    if (
+      jobId === activeJobId
+    ) {
+
+      renderJob(data);
+
+    }
 
 
     const finished =
@@ -2590,82 +2258,153 @@ async function refreshActiveJob() {
       );
 
 
-    if (!finished)
-      return;
+    if (finished) {
+
+      removeActiveJob(
+        jobId
+      );
 
 
-    stopPolling();
+      if (
+        data.status ===
+        "completed"
+      ) {
 
+        setStatus(
+          "研究完了。結果を取得しました。",
+          "success"
+        );
+
+
+        await loadHistory();
+
+      }
+
+
+      if (
+        data.status ===
+        "failed"
+      ) {
+
+        setStatus(
+          `研究失敗: ${
+            data.error_message ||
+            "GitHub Actions worker error"
+          }`,
+          "error"
+        );
+
+      }
+
+
+      if (
+        data.status ===
+        "cancelled"
+      ) {
+
+        setStatus(
+          "研究は停止されました。",
+          "success"
+        );
+
+      }
+
+    }
+
+
+    return data;
+
+  } catch (error) {
+
+    console.error(
+      "Job refresh:",
+      error
+    );
+
+
+    return null;
+
+  }
+
+}
+
+
+/* =========================================================
+   REFRESH ALL ACTIVE JOBS
+========================================================= */
+
+async function refreshActiveJobs() {
+
+  if (!activeJobIds.length) {
 
     if ($("researchButton"))
       $("researchButton")
         .disabled = false;
+
 
     if ($("stopButton"))
       $("stopButton")
         .disabled = true;
 
 
-    if (
-      data.status ===
-      "completed"
-    ) {
+    return;
 
-      setStatus(
-        "研究完了。結果を取得しました。",
-        "success"
-      );
+  }
 
 
-      await loadHistory();
-
-    }
-
-
-    if (
-      data.status ===
-      "failed"
-    ) {
-
-      setStatus(
-        `研究失敗: ${
-          data.error_message ||
-          "GitHub Actions worker error"
-        }`,
-        "error"
-      );
-
-    }
+  const ids =
+    [...activeJobIds];
 
 
-    if (
-      data.status ===
-      "cancelled"
-    ) {
+  for (
+    const id of ids
+  ) {
 
-      setStatus(
-        "研究は停止されました。",
-        "success"
-      );
+    await refreshJob(id);
 
-    }
+  }
 
+
+  /*
+    現在選択されているジョブ
+    を維持する
+  */
+
+  if (
+    activeJobIds.length
+  ) {
+
+    activeJobId =
+      activeJobIds[
+        activeJobIds.length - 1
+      ];
+
+  } else {
 
     activeJobId =
       null;
 
-
-    localStorage.removeItem(
-      "active_research_job"
-    );
+  }
 
 
-  } catch (error) {
+  if ($("researchButton")) {
 
-    console.error(
-      "Job polling:",
-      error
-    );
+    /*
+      新しい研究は
+      前の研究が動いていても投入可能
+    */
+
+    $("researchButton")
+      .disabled = false;
+
+  }
+
+
+  if ($("stopButton")) {
+
+    $("stopButton")
+      .disabled =
+      !activeJobIds.length;
 
   }
 
@@ -2680,12 +2419,13 @@ function startPolling() {
 
   stopPolling();
 
-  refreshActiveJob();
+
+  refreshActiveJobs();
 
 
   pollTimer =
     setInterval(
-      refreshActiveJob,
+      refreshActiveJobs,
       POLL_INTERVAL
     );
 
@@ -2708,6 +2448,62 @@ function stopPolling() {
 
 
 /* =========================================================
+   RECOVER BACKGROUND JOBS
+========================================================= */
+
+async function recoverJob() {
+
+  /*
+    古い単一JOB保存にも対応
+  */
+
+  if (
+    activeJobId &&
+    !activeJobIds.includes(
+      activeJobId
+    )
+  ) {
+
+    activeJobIds.push(
+      activeJobId
+    );
+
+  }
+
+
+  saveActiveJobIds();
+
+
+  if (!activeJobIds.length) {
+
+    return;
+
+  }
+
+
+  await refreshActiveJobs();
+
+
+  if (activeJobIds.length) {
+
+    if ($("researchButton"))
+      $("researchButton")
+        .disabled = false;
+
+
+    if ($("stopButton"))
+      $("stopButton")
+        .disabled = false;
+
+
+    startPolling();
+
+  }
+
+}
+
+
+/* =========================================================
    MEMOS
 ========================================================= */
 
@@ -2715,6 +2511,7 @@ async function loadMemos() {
 
   const box =
     $("memoList");
+
 
   if (!box)
     return;
@@ -2798,9 +2595,7 @@ async function loadMemos() {
 
             <button
               class="button danger memo-delete"
-              data-id="${esc(
-                memo.id
-              )}"
+              data-id="${esc(memo.id)}"
             >
               削除
             </button>
@@ -2815,19 +2610,17 @@ async function loadMemos() {
       .querySelectorAll(
         ".memo-delete"
       )
-      .forEach(
-        button => {
+      .forEach(button => {
 
-          button.addEventListener(
-            "click",
-            () =>
-              deleteMemo(
-                button.dataset.id
-              )
-          );
+        button.addEventListener(
+          "click",
+          () =>
+            deleteMemo(
+              button.dataset.id
+            )
+        );
 
-        }
-      );
+      });
 
   } catch (error) {
 
@@ -2850,14 +2643,14 @@ async function saveMemo() {
 
   const title =
     $("memoTitle")
-      ?.value
-      ?.trim() || "";
+      .value
+      .trim();
 
 
   const content =
     $("memoContent")
-      ?.value
-      ?.trim() || "";
+      .value
+      .trim();
 
 
   if (!content) {
@@ -2897,17 +2690,16 @@ async function saveMemo() {
       throw error;
 
 
-    if ($("memoTitle"))
-      $("memoTitle")
-        .value = "";
+    $("memoTitle")
+      .value = "";
 
-    if ($("memoContent"))
-      $("memoContent")
-        .value = "";
+
+    $("memoContent")
+      .value = "";
 
 
     setStatus(
-      "AI研究メモを保存しました。",
+      "メモを保存しました。",
       "success"
     );
 
@@ -2930,16 +2722,16 @@ async function saveMemo() {
    DELETE MEMO
 ========================================================= */
 
-async function deleteMemo(
-  id
-) {
+async function deleteMemo(id) {
 
   if (
     !confirm(
       "このメモを削除しますか？"
     )
   ) {
+
     return;
+
   }
 
 
@@ -2986,115 +2778,35 @@ async function deleteMemo(
 
 
 /* =========================================================
-   BACKGROUND JOB RECOVERY
-========================================================= */
-
-async function recoverJob() {
-
-  if (!activeJobId)
-    return;
-
-
-  await refreshActiveJob();
-
-
-  if (activeJobId) {
-
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = true;
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = false;
-
-    startPolling();
-
-  }
-
-}
-
-
-/* =========================================================
-   PAGE VISIBILITY
-========================================================= */
-
-/*
-   タブに戻ってきたとき、
-   すぐジョブ状態を更新する。
-*/
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (
-      !document.hidden &&
-      activeJobId
-    ) {
-
-      refreshActiveJob();
-
-    }
-
-  }
-);
-
-
-/* =========================================================
-   ONLINE / OFFLINE
-========================================================= */
-
-window.addEventListener(
-  "online",
-  () => {
-
-    checkConnection();
-
-    if (activeJobId)
-      refreshActiveJob();
-
-  }
-);
-
-
-window.addEventListener(
-  "offline",
-  () => {
-
-    setConnection(
-      false,
-      "OFFLINE"
-    );
-
-  }
-);
-
-
-/* =========================================================
    INIT
 ========================================================= */
 
 function init() {
 
+  /*
+    Navigation
+  */
+
   document
     .querySelectorAll(
       ".nav-button"
     )
-    .forEach(
-      button => {
+    .forEach(button => {
 
-        button.addEventListener(
-          "click",
-          () =>
-            showPage(
-              button.dataset.page
-            )
-        );
+      button.addEventListener(
+        "click",
+        () =>
+          showPage(
+            button.dataset.page
+          )
+      );
 
-      }
-    );
+    });
 
+
+  /*
+    Research
+  */
 
   const researchButton =
     $("researchButton");
@@ -3102,13 +2814,18 @@ function init() {
 
   if (researchButton) {
 
-    researchButton.addEventListener(
-      "click",
-      startResearch
-    );
+    researchButton
+      .addEventListener(
+        "click",
+        startResearch
+      );
 
   }
 
+
+  /*
+    Stop
+  */
 
   const stopButton =
     $("stopButton");
@@ -3116,13 +2833,18 @@ function init() {
 
   if (stopButton) {
 
-    stopButton.addEventListener(
-      "click",
-      stopResearch
-    );
+    stopButton
+      .addEventListener(
+        "click",
+        stopResearch
+      );
 
   }
 
+
+  /*
+    Clear
+  */
 
   const clearButton =
     $("clearButton");
@@ -3130,15 +2852,69 @@ function init() {
 
   if (clearButton) {
 
-    clearButton.addEventListener(
-      "click",
-      () => {
+    clearButton
+      .addEventListener(
+        "click",
+        () => {
 
-        if ($("questionInput"))
           $("questionInput")
             .value = "";
 
-        setStatus("");
+
+          setStatus("");
+
+        }
+      );
+
+  }
+
+
+  /*
+    Memo
+  */
+
+  const memoButton =
+    $("memoSaveButton");
+
+
+  if (memoButton) {
+
+    memoButton
+      .addEventListener(
+        "click",
+        saveMemo
+      );
+
+  }
+
+
+  /*
+    Enterでは送信しない。
+    Ctrl + Enter / Cmd + Enter
+    で研究開始。
+  */
+
+  const question =
+    $("questionInput");
+
+
+  if (question) {
+
+    question.addEventListener(
+      "keydown",
+      event => {
+
+        if (
+          event.key === "Enter" &&
+          (event.ctrlKey ||
+           event.metaKey)
+        ) {
+
+          event.preventDefault();
+
+          startResearch();
+
+        }
 
       }
     );
@@ -3146,22 +2922,8 @@ function init() {
   }
 
 
-  const memoSaveButton =
-    $("memoSaveButton");
-
-
-  if (memoSaveButton) {
-
-    memoSaveButton.addEventListener(
-      "click",
-      saveMemo
-    );
-
-  }
-
-
   /*
-    初期状態
+    初期処理
   */
 
   checkConnection();
@@ -3174,7 +2936,7 @@ function init() {
 
 
 /* =========================================================
-   START
+   DOM READY
 ========================================================= */
 
 if (
