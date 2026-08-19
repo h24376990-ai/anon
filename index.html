@@ -14,18 +14,22 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- 3D mathematical visualization -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- 3D数学モデル -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 
 <body>
 
 <div class="app-shell">
 
+  <!-- =====================================================
+       TOP BAR
+  ====================================================== -->
+
   <header class="topbar">
 
     <div class="brand">
+
       <div class="brand-mark">∑</div>
 
       <div>
@@ -37,21 +41,39 @@
           Autonomous Mathematical Research
         </div>
       </div>
+
     </div>
 
     <div class="connection">
-      <span id="connectionDot" class="dot"></span>
-      <span id="connectionText">接続確認中</span>
+
+      <span
+        id="connectionDot"
+        class="dot"
+      ></span>
+
+      <span id="connectionText">
+        接続確認中
+      </span>
+
     </div>
 
   </header>
 
 
+  <!-- =====================================================
+       MAIN
+  ====================================================== -->
+
   <main>
 
-    <!-- HOME -->
+    <!-- ===================================================
+         HOME
+    ==================================================== -->
 
-    <section id="page-home" class="page active">
+    <section
+      id="page-home"
+      class="page active"
+    >
 
       <div class="hero">
 
@@ -65,12 +87,16 @@
         </h1>
 
         <p>
-          仮説生成、文献確認、反例探索、論理検証、評価、保存まで。
-          ブラウザを閉じてもバックグラウンドで研究を継続します。
+          仮説生成、既知結果照合、反例探索、独立検証、
+          数学的変形、モデル実験、評価、保存まで。
         </p>
 
       </div>
 
+
+      <!-- ===============================================
+           RESEARCH INPUT
+      ================================================ -->
 
       <div class="research-card">
 
@@ -80,28 +106,56 @@
 
         <textarea
           id="questionInput"
-          placeholder="研究したい数学的テーマを入力してください..."
-          rows="5"
+          placeholder="例：リーマン予想について、既知の証明をなぞるのではなく、新しい検証可能な研究方向を探索してください。"
+          rows="6"
         ></textarea>
 
 
-        <div class="research-mode-row">
+        <div class="research-options">
 
-          <button
-            id="modeResearch"
-            class="mode-button active"
-            type="button"
-          >
-            🔬 自律研究
-          </button>
+          <label class="option">
 
-          <button
-            id="modeQuestion"
-            class="mode-button"
-            type="button"
-          >
-            ⚡ 即時質問
-          </button>
+            <input
+              id="deepResearchToggle"
+              type="checkbox"
+              checked
+            >
+
+            <span>
+              深度研究
+            </span>
+
+          </label>
+
+
+          <label class="option">
+
+            <input
+              id="modelResearchToggle"
+              type="checkbox"
+              checked
+            >
+
+            <span>
+              数学モデル実験
+            </span>
+
+          </label>
+
+
+          <label class="option">
+
+            <input
+              id="reverificationToggle"
+              type="checkbox"
+              checked
+            >
+
+            <span>
+              再検証候補を生成
+            </span>
+
+          </label>
 
         </div>
 
@@ -116,14 +170,16 @@
             研究開始
           </button>
 
+
           <button
             id="stopButton"
             class="button danger large"
             disabled
           >
             ■
-            研究停止
+            検証停止
           </button>
+
 
           <button
             id="clearButton"
@@ -137,38 +193,45 @@
       </div>
 
 
-      <div id="statusBox" class="status"></div>
+      <div
+        id="statusBox"
+        class="status"
+      ></div>
 
 
-      <div id="instantAnswerPanel" class="job-panel hidden">
+      <!-- =================================================
+           ACTIVE JOB
+      ================================================== -->
 
-        <div class="section-title">
-          <span>INSTANT ANSWER</span>
-          <span>LOCAL / AI</span>
-        </div>
-
-        <div id="instantAnswer" class="instant-answer">
-        </div>
-
-      </div>
-
-
-      <div id="jobPanel" class="job-panel hidden">
+      <div
+        id="jobPanel"
+        class="job-panel hidden"
+      >
 
         <div class="section-title">
-          <span>ACTIVE RESEARCH</span>
-          <span id="jobStatus">QUEUED</span>
+
+          <span>
+            ACTIVE RESEARCH
+          </span>
+
+          <span id="jobStatus">
+            QUEUED
+          </span>
+
         </div>
 
 
         <div class="progress-area">
 
           <div class="progress-track">
+
             <div
               id="progressValue"
               class="progress-value"
             ></div>
+
           </div>
+
 
           <div class="progress-info">
 
@@ -212,83 +275,99 @@
       </div>
 
 
-      <!-- 3D MODEL -->
-
-      <div class="math3d-panel">
-
-        <div class="section-title">
-
-          <span>
-            3D MATHEMATICAL MODEL
-          </span>
-
-          <span id="modelStatus">
-            READY
-          </span>
-
-        </div>
-
-        <div
-          id="math3dCanvas"
-          class="math3d-canvas"
-        ></div>
-
-        <div class="math3d-toolbar">
-
-          <button
-            id="modelReset"
-            class="button secondary"
-          >
-            ↻ リセット
-          </button>
-
-          <button
-            id="modelAnimate"
-            class="button secondary"
-          >
-            ▶ アニメーション
-          </button>
-
-          <button
-            id="modelStop"
-            class="button secondary"
-          >
-            ■ 停止
-          </button>
-
-        </div>
-
-        <p class="model-help">
-          ドラッグ：回転　／　ホイール：ズーム　／　右ドラッグ：移動
-        </p>
-
-      </div>
-
+      <!-- =================================================
+           SYSTEM STATUS
+      ================================================== -->
 
       <div class="feature-grid">
 
         <div class="feature-card">
+
           <span>∞</span>
-          <b>24H BACKGROUND</b>
-          <p>ブラウザを閉じてもジョブを継続。</p>
+
+          <b>
+            24H BACKGROUND
+          </b>
+
+          <p>
+            ブラウザを閉じてもキューに登録された研究を継続。
+          </p>
+
         </div>
 
+
         <div class="feature-card">
+
           <span>◎</span>
-          <b>RESEARCH MEMORY</b>
-          <p>過去研究・失敗・メモを次の研究へ渡します。</p>
+
+          <b>
+            100 RESULTS
+          </b>
+
+          <p>
+            通常の研究履歴は最新100件まで表示。
+          </p>
+
         </div>
 
-        <div class="feature-card">
-          <span>◎</span>
-          <b>COUNTEREXAMPLE</b>
-          <p>仮説を肯定するだけでなく反例を探します。</p>
-        </div>
 
         <div class="feature-card">
-          <span>◇</span>
-          <b>LITERATURE CHECK</b>
-          <p>論文・文献を確認し、存在しない引用を禁止します。</p>
+
+          <span>★</span>
+
+          <b>
+            SAVED
+          </b>
+
+          <p>
+            重要な研究結果をユーザー保存。
+          </p>
+
+        </div>
+
+
+        <div class="feature-card">
+
+          <span>△</span>
+
+          <b>
+            CRITIQUE
+          </b>
+
+          <p>
+            仮説・証拠・未検証・反例を分離。
+          </p>
+
+        </div>
+
+
+        <div class="feature-card">
+
+          <span>∿</span>
+
+          <b>
+            3D MODEL
+          </b>
+
+          <p>
+            数学モデルを3D空間で実験。
+          </p>
+
+        </div>
+
+
+        <div class="feature-card">
+
+          <span>↻</span>
+
+          <b>
+            REVERIFICATION
+          </b>
+
+          <p>
+            有望な結果を別ルートから再検証。
+          </p>
+
         </div>
 
       </div>
@@ -296,25 +375,39 @@
     </section>
 
 
-    <!-- HISTORY -->
+    <!-- ===================================================
+         HISTORY
+    ==================================================== -->
 
-    <section id="page-history" class="page">
+    <section
+      id="page-history"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
           <div class="eyebrow">
             RESEARCH DATABASE
           </div>
 
-          <h2>研究履歴</h2>
+          <h2>
+            研究履歴
+          </h2>
+
         </div>
 
-        <span id="historyCount" class="count">
+
+        <span
+          id="historyCount"
+          class="count"
+        >
           0件
         </span>
 
       </div>
+
 
       <div class="split-layout">
 
@@ -325,13 +418,16 @@
           読み込み中...
         </div>
 
+
         <div
           id="detail"
           class="detail-panel"
         >
+
           <div class="empty">
             研究結果を選択してください。
           </div>
+
         </div>
 
       </div>
@@ -339,21 +435,31 @@
     </section>
 
 
-    <!-- SAVED -->
+    <!-- ===================================================
+         SAVED
+    ==================================================== -->
 
-    <section id="page-saved" class="page">
+    <section
+      id="page-saved"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
           <div class="eyebrow">
-            PERSONAL ARCHIVE
+            PERMANENT ARCHIVE
           </div>
 
-          <h2>保存した研究</h2>
+          <h2>
+            保存した研究
+          </h2>
+
         </div>
 
       </div>
+
 
       <div
         id="savedList"
@@ -365,83 +471,415 @@
     </section>
 
 
-    <!-- JOBS -->
+    <!-- ===================================================
+         JOBS
+    ==================================================== -->
 
-    <section id="page-jobs" class="page">
+    <section
+      id="page-jobs"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
           <div class="eyebrow">
             WORKER QUEUE
           </div>
 
-          <h2>研究ジョブ</h2>
+          <h2>
+            研究ジョブ
+          </h2>
+
         </div>
 
       </div>
 
-      <div id="jobsList" class="jobs-list">
+
+      <div
+        id="jobsList"
+        class="jobs-list"
+      >
         読み込み中...
       </div>
 
     </section>
 
 
-    <!-- MEMORY -->
+    <!-- ===================================================
+         MEMORY
+    ==================================================== -->
 
-    <section id="page-memory" class="page">
+    <section
+      id="page-memory"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
           <div class="eyebrow">
             AI MEMORY
           </div>
 
-          <h2>AI研究メモリ</h2>
+          <h2>
+            AI研究メモリ
+          </h2>
+
         </div>
 
       </div>
+
 
       <div id="memoryList"></div>
 
     </section>
 
 
-    <!-- ROUTES -->
+    <!-- ===================================================
+         ROUTES
+    ==================================================== -->
 
-    <section id="page-routes" class="page">
+    <section
+      id="page-routes"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
           <div class="eyebrow">
             RESEARCH GRAPH
           </div>
 
-          <h2>探索ルート</h2>
+          <h2>
+            探索ルート
+          </h2>
+
         </div>
 
       </div>
 
-      <div id="routesList" class="graph-panel"></div>
+
+      <div
+        id="routesList"
+        class="graph-panel"
+      ></div>
 
     </section>
 
 
-    <!-- MEMOS -->
+    <!-- ===================================================
+         3D MATHEMATICAL LAB
+    ==================================================== -->
 
-    <section id="page-memos" class="page">
+    <section
+      id="page-model"
+      class="page"
+    >
 
       <div class="page-header">
 
         <div>
+
+          <div class="eyebrow">
+            MATHEMATICAL MODEL LAB
+          </div>
+
+          <h2>
+            数学モデル実験室
+          </h2>
+
+        </div>
+
+        <span
+          id="modelStatus"
+          class="count"
+        >
+          READY
+        </span>
+
+      </div>
+
+
+      <div class="model-layout">
+
+
+        <!-- MODEL CONTROLS -->
+
+        <aside class="model-sidebar">
+
+          <div class="model-card">
+
+            <div class="card-label">
+              MODEL TYPE
+            </div>
+
+
+            <select id="modelType">
+
+              <option value="surface">
+                3D曲面
+              </option>
+
+              <option value="parametric">
+                パラメトリック曲面
+              </option>
+
+              <option value="vector">
+                ベクトル場
+              </option>
+
+              <option value="particles">
+                粒子モデル
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="model-card">
+
+            <div class="card-label">
+              EXPRESSION
+            </div>
+
+            <input
+              id="modelExpression"
+              value="sin(sqrt(x*x+y*y))"
+              placeholder="例: sin(x)*cos(y)"
+            >
+
+          </div>
+
+
+          <div class="model-card">
+
+            <div class="card-label">
+              PARAMETERS
+            </div>
+
+
+            <label>
+              X範囲
+
+              <input
+                id="modelXRange"
+                type="number"
+                value="10"
+                min="1"
+                max="50"
+              >
+
+            </label>
+
+
+            <label>
+              Y範囲
+
+              <input
+                id="modelYRange"
+                type="number"
+                value="10"
+                min="1"
+                max="50"
+              >
+
+            </label>
+
+
+            <label>
+              解像度
+
+              <input
+                id="modelResolution"
+                type="number"
+                value="50"
+                min="10"
+                max="120"
+              >
+
+            </label>
+
+          </div>
+
+
+          <div class="model-actions">
+
+            <button
+              id="renderModelButton"
+              class="button primary"
+            >
+              3Dモデル生成
+            </button>
+
+
+            <button
+              id="animateModelButton"
+              class="button secondary"
+            >
+              アニメーション
+            </button>
+
+          </div>
+
+
+          <div class="model-card">
+
+            <div class="card-label">
+              MODEL EXPERIMENT
+            </div>
+
+            <p>
+              3Dモデルは数学的証明ではありません。
+              シミュレーション・数値的傾向・直感形成のために使用します。
+            </p>
+
+          </div>
+
+        </aside>
+
+
+        <!-- 3D VIEW -->
+
+        <div class="model-view">
+
+          <div
+            id="model3d"
+            class="model3d"
+          ></div>
+
+
+          <div class="model-info">
+
+            <span>
+              ROTATE
+            </span>
+
+            <span>
+              ZOOM
+            </span>
+
+            <span>
+              PAN
+            </span>
+
+            <span>
+              INTERACTIVE
+            </span>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- MODEL TRANSFORMATION -->
+
+      <div class="model-transform">
+
+        <div class="section-title">
+          数学モデル変形
+        </div>
+
+
+        <div
+          id="modelTransformList"
+          class="transform-grid"
+        >
+
+          <div class="empty">
+            モデルを生成すると変形候補が表示されます。
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- SIMULATION LOG -->
+
+      <div class="simulation-panel">
+
+        <div class="section-title">
+          実験ログ
+        </div>
+
+        <pre
+          id="simulationLog"
+        >まだ実験はありません。</pre>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         REVERIFICATION
+    ==================================================== -->
+
+    <section
+      id="page-verify"
+      class="page"
+    >
+
+      <div class="page-header">
+
+        <div>
+
+          <div class="eyebrow">
+            INDEPENDENT VERIFICATION
+          </div>
+
+          <h2>
+            再検証
+          </h2>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="verificationList"
+        class="verification-list"
+      >
+
+        <div class="empty">
+          再検証対象を読み込んでいます...
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ===================================================
+         MEMOS
+    ==================================================== -->
+
+    <section
+      id="page-memos"
+      class="page"
+    >
+
+      <div class="page-header">
+
+        <div>
+
           <div class="eyebrow">
             RESEARCH NOTES
           </div>
 
-          <h2>研究メモ</h2>
+          <h2>
+            研究メモ
+          </h2>
+
         </div>
 
       </div>
@@ -455,11 +893,13 @@
           placeholder="メモタイトル"
         >
 
+
         <textarea
           id="memoContent"
           rows="5"
-          placeholder="Claudeとの研究内容、仮説、重要な論点などを入力..."
+          placeholder="研究について自由にメモ..."
         ></textarea>
+
 
         <button
           id="memoSaveButton"
@@ -483,39 +923,88 @@
   </main>
 
 
+  <!-- =====================================================
+       BOTTOM NAV
+  ====================================================== -->
+
   <nav class="bottom-nav">
 
-    <button class="nav-button active" data-page="home">
+    <button
+      class="nav-button active"
+      data-page="home"
+    >
       <span>⌂</span>
       <small>研究</small>
     </button>
 
-    <button class="nav-button" data-page="history">
+
+    <button
+      class="nav-button"
+      data-page="history"
+    >
       <span>◫</span>
       <small>履歴</small>
     </button>
 
-    <button class="nav-button" data-page="saved">
+
+    <button
+      class="nav-button"
+      data-page="saved"
+    >
       <span>★</span>
       <small>保存</small>
     </button>
 
-    <button class="nav-button" data-page="jobs">
+
+    <button
+      class="nav-button"
+      data-page="jobs"
+    >
       <span>◉</span>
       <small>ジョブ</small>
     </button>
 
-    <button class="nav-button" data-page="memory">
+
+    <button
+      class="nav-button"
+      data-page="memory"
+    >
       <span>∞</span>
       <small>AI記憶</small>
     </button>
 
-    <button class="nav-button" data-page="routes">
+
+    <button
+      class="nav-button"
+      data-page="routes"
+    >
       <span>⌘</span>
       <small>ルート</small>
     </button>
 
-    <button class="nav-button" data-page="memos">
+
+    <button
+      class="nav-button"
+      data-page="model"
+    >
+      <span>∿</span>
+      <small>3D</small>
+    </button>
+
+
+    <button
+      class="nav-button"
+      data-page="verify"
+    >
+      <span>✓</span>
+      <small>再検証</small>
+    </button>
+
+
+    <button
+      class="nav-button"
+      data-page="memos"
+    >
       <span>✎</span>
       <small>メモ</small>
     </button>
