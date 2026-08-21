@@ -22,20 +22,6 @@ const ROUTE_BLOCK_LIMIT = 3;
 const DEFAULT_PROJECT_ID =
   "ab429192-27d2-47e4-9ad7-08b639f45120";
 
-/*
- * 各プロバイダーは上から順番に試す。
- *
- * Gemini
- * ↓
- * Cerebras
- * ↓
- * Groq
- * ↓
- * OpenRouter
- *
- * 1つが失敗しても研究全体を停止しない。
- */
-
 const GEMINI_MODEL =
   "gemini-3.6-flash";
 
@@ -124,9 +110,7 @@ function extractJson(
       )
       .trim();
 
-
   try {
-
     const parsed =
       JSON.parse(value);
 
@@ -137,22 +121,15 @@ function extractJson(
     ) {
       return parsed;
     }
-
   } catch {
     /* continue */
   }
-
-
-  /*
-   * JSON部分だけ抜き出す。
-   */
 
   const first =
     value.indexOf("{");
 
   const last =
     value.lastIndexOf("}");
-
 
   if (
     first !== -1 &&
@@ -165,7 +142,6 @@ function extractJson(
         first,
         last + 1,
       );
-
 
     try {
 
@@ -184,7 +160,6 @@ function extractJson(
       /* continue */
     }
   }
-
 
   return null;
 }
@@ -268,14 +243,12 @@ async function fetchJson(
   const text =
     await response.text();
 
-
   if (!response.ok) {
 
     throw new Error(
       `${provider} HTTP ${response.status}: ${text}`,
     );
   }
-
 
   let data: any;
 
@@ -290,7 +263,6 @@ async function fetchJson(
       `${provider} returned invalid JSON.`,
     );
   }
-
 
   return data;
 }
@@ -312,10 +284,8 @@ async function callGemini(
     ) ||
     GEMINI_MODEL;
 
-
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
 
   const data =
     await fetchJson(
@@ -376,12 +346,10 @@ async function callGemini(
       "Gemini",
     );
 
-
   const text =
     getGeminiText(
       data,
     );
-
 
   if (!text) {
 
@@ -389,7 +357,6 @@ async function callGemini(
       "Gemini returned an empty answer.",
     );
   }
-
 
   return {
     provider:
@@ -406,7 +373,7 @@ async function callGemini(
 
 
 /* =========================================================
-   OPENAI-COMPATIBLE PROVIDER
+   OPENAI COMPATIBLE
 ========================================================= */
 
 async function callOpenAICompatible(
@@ -476,12 +443,10 @@ async function callOpenAICompatible(
       provider,
     );
 
-
   const text =
     getOpenAICompatibleText(
       data,
     );
-
 
   if (!text) {
 
@@ -489,7 +454,6 @@ async function callOpenAICompatible(
       `${provider} returned an empty answer.`,
     );
   }
-
 
   return {
     provider:
@@ -520,7 +484,6 @@ async function callCerebras(
       "CEREBRAS_MODEL",
     ) ||
     CEREBRAS_MODEL;
-
 
   return callOpenAICompatible(
 
@@ -556,7 +519,6 @@ async function callGroq(
     ) ||
     GROQ_MODEL;
 
-
   return callOpenAICompatible(
 
     "Groq",
@@ -591,7 +553,6 @@ async function callOpenRouter(
       "OPENROUTER_MODEL",
     ) ||
     OPENROUTER_MODEL;
-
 
   const response =
     await fetch(
@@ -658,10 +619,8 @@ async function callOpenRouter(
       },
     );
 
-
   const text =
     await response.text();
-
 
   if (!response.ok) {
 
@@ -669,7 +628,6 @@ async function callOpenRouter(
       `OpenRouter HTTP ${response.status}: ${text}`,
     );
   }
-
 
   let data: any;
 
@@ -685,12 +643,10 @@ async function callOpenRouter(
     );
   }
 
-
   const aiText =
     getOpenAICompatibleText(
       data,
     );
-
 
   if (!aiText) {
 
@@ -698,7 +654,6 @@ async function callOpenRouter(
       "OpenRouter returned an empty answer.",
     );
   }
-
 
   return {
 
@@ -736,9 +691,9 @@ async function callAI(
   const attempts: any[] = [];
 
 
-  /*
-   * 1. Gemini
-   */
+  /* =======================================================
+     GEMINI
+  ======================================================= */
 
   if (keys.gemini) {
 
@@ -753,9 +708,7 @@ async function callAI(
 
       return {
         ...result,
-
         attempts,
-
       };
 
     } catch (error) {
@@ -774,9 +727,9 @@ async function callAI(
   }
 
 
-  /*
-   * 2. Cerebras
-   */
+  /* =======================================================
+     CEREBRAS
+  ======================================================= */
 
   if (keys.cerebras) {
 
@@ -791,9 +744,7 @@ async function callAI(
 
       return {
         ...result,
-
         attempts,
-
       };
 
     } catch (error) {
@@ -812,9 +763,9 @@ async function callAI(
   }
 
 
-  /*
-   * 3. Groq
-   */
+  /* =======================================================
+     GROQ
+  ======================================================= */
 
   if (keys.groq) {
 
@@ -829,9 +780,7 @@ async function callAI(
 
       return {
         ...result,
-
         attempts,
-
       };
 
     } catch (error) {
@@ -850,9 +799,9 @@ async function callAI(
   }
 
 
-  /*
-   * 4. OpenRouter
-   */
+  /* =======================================================
+     OPENROUTER
+  ======================================================= */
 
   if (keys.openrouter) {
 
@@ -868,9 +817,7 @@ async function callAI(
 
       return {
         ...result,
-
         attempts,
-
       };
 
     } catch (error) {
@@ -904,9 +851,9 @@ Deno.serve(
     req: Request,
   ) => {
 
-    /*
-     * CORS
-     */
+    /* =====================================================
+       CORS
+    ===================================================== */
 
     if (
       req.method ===
@@ -934,30 +881,25 @@ Deno.serve(
           "SUPABASE_URL",
         );
 
-
       const serviceRoleKey =
         Deno.env.get(
           "SUPABASE_SERVICE_ROLE_KEY",
         );
-
 
       const geminiKey =
         Deno.env.get(
           "GEMINI_API_KEY",
         );
 
-
       const cerebrasKey =
         Deno.env.get(
           "CEREBRAS_API_KEY",
         );
 
-
       const groqKey =
         Deno.env.get(
           "GROQ_API_KEY",
         );
-
 
       const openRouterKey =
         Deno.env.get(
@@ -1032,11 +974,24 @@ Deno.serve(
       }
 
 
+      const payload =
+        body?.payload &&
+        typeof body.payload === "object"
+          ? body.payload
+          : {};
+
+
+      /*
+       * Workerからは message / theme / payload.theme
+       * のどれかでテーマが来る可能性がある。
+       */
+
       const message =
         cleanText(
           body?.message ??
           body?.theme ??
-          body?.payload?.theme,
+          body?.payload?.theme ??
+          body?.payload?.message,
         ).trim();
 
 
@@ -1046,17 +1001,6 @@ Deno.serve(
           body?.payload?.project_id ??
           DEFAULT_PROJECT_ID,
         ).trim();
-
-
-      /*
-       * 研究ジョブから送られる可能性のある情報
-       */
-
-      const payload =
-        body?.payload &&
-        typeof body.payload === "object"
-          ? body.payload
-          : {};
 
 
       const researchRules =
@@ -1098,7 +1042,11 @@ Deno.serve(
 
 
       /* =====================================================
-         LOAD ALL USEFUL RESEARCH MEMORY
+         LOAD RESEARCH HISTORY
+         
+         IMPORTANT:
+         research_results に description が存在しないため、
+         description は絶対に SELECT しない。
       ===================================================== */
 
       const {
@@ -1112,7 +1060,7 @@ Deno.serve(
             "research_results",
           )
           .select(
-            "id,title,description,status,hypothesis,calculation,verification,next_action,evidence,created_at",
+            "id,title,status,hypothesis,calculation,verification,next_action,evidence,created_at",
           )
           .eq(
             "project_id",
@@ -1191,15 +1139,6 @@ Deno.serve(
         ).length;
 
 
-      /*
-       * 3回以上なら同じルートを禁止。
-       *
-       * ただし「研究テーマそのもの」を
-       * 禁止するわけではない。
-       *
-       * AIには別アプローチを強制する。
-       */
-
       const routeBlocked =
         sameRouteCount >=
         ROUTE_BLOCK_LIMIT;
@@ -1221,6 +1160,11 @@ Deno.serve(
                 item?.evidence ??
                 {};
 
+              const savedSummary =
+                cleanText(
+                  evidence?.summary,
+                );
+
               return [
                 `#${index + 1}`,
 
@@ -1235,6 +1179,8 @@ Deno.serve(
                 `status=${cleanText(
                   item?.status,
                 )}`,
+
+                `summary=${savedSummary}`,
 
                 `hypothesis=${cleanText(
                   item?.hypothesis,
@@ -1754,6 +1700,12 @@ JSON以外の文章は出力しないでください。
         );
 
 
+      /*
+       * description カラムは存在しない。
+       *
+       * summary は evidence.summary に保存する。
+       */
+
       const summary =
         cleanText(
           research.summary,
@@ -1830,10 +1782,19 @@ JSON以外の文章は出力しないでください。
 
 
       /* =====================================================
-         EVIDENCE
+         EVIDENCE OBJECT
       ===================================================== */
 
       const evidenceObject = {
+
+        /*
+         * 重要:
+         * summaryをdescriptionカラムの代わりに
+         * JSONB内へ保存する。
+         */
+
+        summary:
+          summary,
 
         items:
           evidence,
@@ -1899,6 +1860,10 @@ JSON以外の文章は出力しないでください。
          SAVE
       ===================================================== */
 
+      /*
+       * description は絶対に送らない。
+       */
+
       const {
         data:
           savedResult,
@@ -1916,9 +1881,6 @@ JSON以外の文章は出力しないでください。
 
             title:
               title,
-
-            description:
-              summary,
 
             status:
               status,
@@ -1940,7 +1902,7 @@ JSON以外の文章は出力しないでください。
 
           })
           .select(
-            "id,project_id,title,description,status,hypothesis,calculation,verification,next_action,evidence,created_at",
+            "id,project_id,title,status,hypothesis,calculation,verification,next_action,evidence,created_at",
           )
           .single();
 
@@ -1999,8 +1961,12 @@ JSON以外の文章は出力しないでください。
           title:
             savedResult.title,
 
+          /*
+           * DBのdescriptionは使わない。
+           */
+
           description:
-            savedResult.description,
+            summary,
 
           status:
             savedResult.status,
@@ -2026,7 +1992,7 @@ JSON以外の文章は出力しないでください。
             sameRouteCount + 1,
 
           summary:
-            savedResult.description,
+            summary,
 
           calculation:
             savedResult.calculation,
