@@ -1,7 +1,7 @@
 /* =========================================================
    Research AI Lab
-   app.js — Integrated Version
-   ========================================================= */
+   app.js — Integrated Background Job Version
+========================================================= */
 
 "use strict";
 
@@ -60,6 +60,10 @@ let isStartingResearch = false;
 ========================================================= */
 
 const MAX_VISIBLE_RESULTS = 100;
+
+const CONTEXT_RESULTS = 30;
+
+const ROUTE_RESULTS = 100;
 
 const POLL_INTERVAL = 5000;
 
@@ -137,8 +141,13 @@ function formatDate(value) {
 
 function parseJson(value) {
 
-  if (!value)
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
     return {};
+  }
 
   if (
     typeof value === "object"
@@ -148,7 +157,9 @@ function parseJson(value) {
 
   try {
 
-    return JSON.parse(value);
+    return JSON.parse(
+      value
+    );
 
   } catch {
 
@@ -168,17 +179,23 @@ function parseJson(value) {
 
 function resultSymbol(result) {
 
+  const evaluation =
+    String(
+      result?.evaluation ||
+      ""
+    ).trim();
+
   if (
     POSITIVE_EVALUATIONS
       .includes(
-        result?.evaluation
+        evaluation
       )
   ) {
     return "⭕";
   }
 
   if (
-    result?.evaluation ===
+    evaluation ===
     "❌"
   ) {
     return "❌";
@@ -320,7 +337,9 @@ async function checkConnection() {
 function showPage(page) {
 
   document
-    .querySelectorAll(".page")
+    .querySelectorAll(
+      ".page"
+    )
     .forEach(section => {
 
       section.classList.toggle(
@@ -333,7 +352,9 @@ function showPage(page) {
 
 
   document
-    .querySelectorAll(".nav-button")
+    .querySelectorAll(
+      ".nav-button"
+    )
     .forEach(button => {
 
       button.classList.toggle(
@@ -367,6 +388,24 @@ function showPage(page) {
 
 
 /* =========================================================
+   COMMON RESULT SELECT
+========================================================= */
+
+const RESULT_COLUMNS = [
+  "id",
+  "project_id",
+  "title",
+  "hypothesis",
+  "content",
+  "status",
+  "evaluation",
+  "confidence_level",
+  "is_human_saved",
+  "created_at"
+].join(",");
+
+
+/* =========================================================
    LOAD HISTORY
 ========================================================= */
 
@@ -396,19 +435,7 @@ async function loadHistory() {
           "research_results"
         )
         .select(
-          [
-            "id",
-            "project_id",
-            "title",
-            "hypothesis",
-            "content",
-            "status",
-            "evaluation",
-            "confidence_level",
-            "is_human_saved",
-            "created_at",
-            "updated_at"
-          ].join(",")
+          RESULT_COLUMNS
         )
         .eq(
           "project_id",
@@ -433,9 +460,12 @@ async function loadHistory() {
       data || [];
 
 
-    $("historyCount")
-      .textContent =
-      `${lastResults.length}件`;
+    const count =
+      $("historyCount");
+
+    if (count)
+      count.textContent =
+        `${lastResults.length}件`;
 
 
     renderResults(
@@ -509,19 +539,7 @@ async function loadSaved() {
           "research_results"
         )
         .select(
-          [
-            "id",
-            "project_id",
-            "title",
-            "hypothesis",
-            "content",
-            "status",
-            "evaluation",
-            "confidence_level",
-            "is_human_saved",
-            "created_at",
-            "updated_at"
-          ].join(",")
+          RESULT_COLUMNS
         )
         .eq(
           "project_id",
@@ -645,10 +663,14 @@ async function loadJobs() {
           "unknown";
 
 
-        const theme =
+        const payload =
           parseJson(
             job.payload
-          ).theme ||
+          );
+
+
+        const theme =
+          payload.theme ||
           job.job_type ||
           "Research";
 
@@ -764,7 +786,7 @@ async function loadMemory() {
         </p>
 
         <p>
-          AIは将来的にこの履歴から、
+          AIはこの履歴から、
           失敗した理由、反例、
           過去に試した研究ルート、
           成功した検証方法などを
@@ -826,7 +848,9 @@ async function loadRoutes() {
             ascending: false
           }
         )
-        .limit(100);
+        .limit(
+          ROUTE_RESULTS
+        );
 
 
     if (error)
@@ -925,7 +949,7 @@ function renderResults(
   rows
 ) {
 
-  if (!rows.length) {
+  if (!rows?.length) {
 
     box.innerHTML =
       `<div class="empty">
@@ -976,15 +1000,12 @@ function renderResults(
 
         </span>
 
-
         <span>
-
           ${
             result.is_human_saved
               ? "★"
               : ""
           }
-
         </span>
 
       </button>
@@ -1005,8 +1026,10 @@ function renderResults(
           const result =
             rows.find(
               item =>
-                item.id ===
-                element.dataset.id
+                String(item.id) ===
+                String(
+                  element.dataset.id
+                )
             );
 
 
@@ -1037,13 +1060,20 @@ function renderDetail(
   result
 ) {
 
+  const detail =
+    $("detail");
+
+  if (!detail)
+    return;
+
+
   const content =
     parseJson(
       result.content
     );
 
 
-  $("detail").innerHTML = `
+  detail.innerHTML = `
 
     <div class="detail-head">
 
@@ -1189,7 +1219,9 @@ async function toggleSave(
   try {
 
     const newValue =
-      !result.is_human_saved;
+      !Boolean(
+        result.is_human_saved
+      );
 
 
     const {
@@ -1226,6 +1258,11 @@ async function toggleSave(
         ? "研究結果を保存しました。"
         : "保存を解除しました。",
       "success"
+    );
+
+
+    renderDetail(
+      result
     );
 
 
@@ -1284,17 +1321,11 @@ async function requestReverification(
       verification_modes: [
 
         "contradiction",
-
         "backward_reasoning",
-
         "induction",
-
         "deduction",
-
         "counterexample",
-
         "alternative_derivation",
-
         "literature_comparison"
 
       ],
@@ -1420,11 +1451,20 @@ async function startResearch() {
     true;
 
 
-  $("researchButton")
-    .disabled = true;
+  const researchButton =
+    $("researchButton");
 
-  $("stopButton")
-    .disabled = false;
+  const stopButton =
+    $("stopButton");
+
+
+  if (researchButton)
+    researchButton.disabled =
+      true;
+
+  if (stopButton)
+    stopButton.disabled =
+      false;
 
 
   setStatus(
@@ -1433,12 +1473,6 @@ async function startResearch() {
 
 
   try {
-
-    /*
-     * 過去研究を取得。
-     * GitHub Actions側でさらに利用できるよう
-     * payloadにも入れる。
-     */
 
     const context =
       await getResearchContext(
@@ -1565,11 +1599,13 @@ async function startResearch() {
     );
 
 
-    $("researchButton")
-      .disabled = false;
+    if (researchButton)
+      researchButton.disabled =
+        false;
 
-    $("stopButton")
-      .disabled = true;
+    if (stopButton)
+      stopButton.disabled =
+        true;
 
 
     setStatus(
@@ -1629,7 +1665,9 @@ async function getResearchContext(
             ascending: false
           }
         )
-        .limit(30);
+        .limit(
+          CONTEXT_RESULTS
+        );
 
 
     if (error)
@@ -1715,8 +1753,12 @@ async function stopResearch() {
   }
 
 
-  $("stopButton")
-    .disabled = true;
+  const stopButton =
+    $("stopButton");
+
+  if (stopButton)
+    stopButton.disabled =
+      true;
 
 
   try {
@@ -1787,8 +1829,9 @@ async function stopResearch() {
 
   } catch (error) {
 
-    $("stopButton")
-      .disabled = false;
+    if (stopButton)
+      stopButton.disabled =
+        false;
 
 
     setStatus(
@@ -1823,38 +1866,38 @@ function renderJob(
   );
 
 
-  $("jobId")
-    .textContent =
-    job.id || "—";
+  if ($("jobId"))
+    $("jobId").textContent =
+      job.id || "—";
 
 
-  $("jobStatus")
-    .textContent =
-    String(
-      job.status ||
-      "unknown"
-    ).toUpperCase();
+  if ($("jobStatus"))
+    $("jobStatus").textContent =
+      String(
+        job.status ||
+        "unknown"
+      ).toUpperCase();
 
 
-  $("jobCreated")
-    .textContent =
-    formatDate(
-      job.created_at
-    );
+  if ($("jobCreated"))
+    $("jobCreated").textContent =
+      formatDate(
+        job.created_at
+      );
 
 
-  $("jobStarted")
-    .textContent =
-    formatDate(
-      job.started_at
-    );
+  if ($("jobStarted"))
+    $("jobStarted").textContent =
+      formatDate(
+        job.started_at
+      );
 
 
-  $("jobFinished")
-    .textContent =
-    formatDate(
-      job.finished_at
-    );
+  if ($("jobFinished"))
+    $("jobFinished").textContent =
+      formatDate(
+        job.finished_at
+      );
 
 
   let percent = 0;
@@ -2000,11 +2043,13 @@ async function refreshActiveJob() {
 
       stopPolling();
 
-      $("researchButton")
-        .disabled = false;
+      if ($("researchButton"))
+        $("researchButton")
+          .disabled = false;
 
-      $("stopButton")
-        .disabled = true;
+      if ($("stopButton"))
+        $("stopButton")
+          .disabled = true;
 
       return;
 
@@ -2030,11 +2075,13 @@ async function refreshActiveJob() {
     stopPolling();
 
 
-    $("researchButton")
-      .disabled = false;
+    if ($("researchButton"))
+      $("researchButton")
+        .disabled = false;
 
-    $("stopButton")
-      .disabled = true;
+    if ($("stopButton"))
+      $("stopButton")
+        .disabled = true;
 
 
     if (
@@ -2047,17 +2094,10 @@ async function refreshActiveJob() {
         "success"
       );
 
-
-      await loadHistory();
-
-
-      /*
-       * 結果が保存された後、
-       * 画面上の研究データも更新。
-       */
-
       selectedResult =
         null;
+
+      await loadHistory();
 
     }
 
@@ -2342,11 +2382,11 @@ async function saveMemo() {
       throw error;
 
 
-    $("memoTitle")
-      .value = "";
+    if ($("memoTitle"))
+      $("memoTitle").value = "";
 
-    $("memoContent")
-      .value = "";
+    if ($("memoContent"))
+      $("memoContent").value = "";
 
 
     setStatus(
@@ -2451,11 +2491,13 @@ async function recoverJob() {
 
   if (activeJobId) {
 
-    $("researchButton")
-      .disabled = true;
+    if ($("researchButton"))
+      $("researchButton")
+        .disabled = true;
 
-    $("stopButton")
-      .disabled = false;
+    if ($("stopButton"))
+      $("stopButton")
+        .disabled = false;
 
     startPolling();
 
@@ -2467,14 +2509,6 @@ async function recoverJob() {
 /* =========================================================
    3D RESEARCH BRIDGE
 ========================================================= */
-
-/*
- * 3Dモデル側から研究結果を受け取るための
- * 共通API。
- *
- * index.html側の3Dエンジンは、
- * 将来的にこの関数を呼び出せる。
- */
 
 window.ResearchModelBridge = {
 
@@ -2591,7 +2625,7 @@ function init() {
           showPage(
             button.dataset.page
           )
-        );
+      );
 
     });
 
@@ -2615,8 +2649,9 @@ function init() {
       "click",
       () => {
 
-        $("questionInput")
-          .value = "";
+        if ($("questionInput"))
+          $("questionInput")
+            .value = "";
 
         setStatus("");
 
