@@ -1,7 +1,8 @@
 /* =========================================================
    Research AI Lab
-   app.js — Integrated Background Job Version
-========================================================= */
+   app.js
+   Background Research Integrated Version
+   ========================================================= */
 
 "use strict";
 
@@ -34,38 +35,18 @@ const sb =
 
 
 /* =========================================================
-   STATE
-========================================================= */
-
-let activeJobId =
-  localStorage.getItem(
-    "active_research_job"
-  ) || null;
-
-let pollTimer = null;
-
-let lastResults = [];
-
-let selectedResult = null;
-
-let researchContext = [];
-
-let routeCache = [];
-
-let isStartingResearch = false;
-
-
-/* =========================================================
    CONSTANTS
 ========================================================= */
 
 const MAX_VISIBLE_RESULTS = 100;
 
-const CONTEXT_RESULTS = 30;
+const CONTEXT_LIMIT = 50;
 
-const ROUTE_RESULTS = 100;
+const POLL_INTERVAL = 4000;
 
-const POLL_INTERVAL = 5000;
+const QUEUED_WARNING_TIME = 30000;
+
+const WORKER_TIMEOUT = 10000;
 
 const TERMINAL_STATUSES = [
   "completed",
@@ -77,6 +58,47 @@ const POSITIVE_EVALUATIONS = [
   "⭕",
   "⭕️"
 ];
+
+
+/*
+ * kick-worker
+ *
+ * Supabase Edge Function
+ * GitHub Actions / Worker の起動を担当する。
+ */
+const KICK_WORKER_FUNCTION =
+  "kick-worker";
+
+
+/* =========================================================
+   STATE
+========================================================= */
+
+let activeJobId =
+  localStorage.getItem(
+    "active_research_job"
+  ) || null;
+
+let activeJobCreatedAt =
+  localStorage.getItem(
+    "active_research_job_created_at"
+  ) || null;
+
+let pollTimer = null;
+
+let queuedWarningTimer = null;
+
+let lastResults = [];
+
+let selectedResult = null;
+
+let researchContext = [];
+
+let routeCache = [];
+
+let isStartingResearch = false;
+
+let isKickingWorker = false;
 
 
 /* =========================================================
@@ -157,9 +179,7 @@ function parseJson(value) {
 
   try {
 
-    return JSON.parse(
-      value
-    );
+    return JSON.parse(value);
 
   } catch {
 
@@ -181,8 +201,7 @@ function resultSymbol(result) {
 
   const evaluation =
     String(
-      result?.evaluation ||
-      ""
+      result?.evaluation || ""
     ).trim();
 
   if (
@@ -337,9 +356,7 @@ async function checkConnection() {
 function showPage(page) {
 
   document
-    .querySelectorAll(
-      ".page"
-    )
+    .querySelectorAll(".page")
     .forEach(section => {
 
       section.classList.toggle(
@@ -352,9 +369,7 @@ function showPage(page) {
 
 
   document
-    .querySelectorAll(
-      ".nav-button"
-    )
+    .querySelectorAll(".nav-button")
     .forEach(button => {
 
       button.classList.toggle(
@@ -375,8 +390,10 @@ function showPage(page) {
   if (page === "jobs")
     loadJobs();
 
-  if (page === "memory")
-    loadMemory();
+  /*
+   * AI研究メモリ専用ページは削除予定。
+   * AI側のメモリはDBに保持する。
+   */
 
   if (page === "routes")
     loadRoutes();
@@ -385,24 +402,6 @@ function showPage(page) {
     loadMemos();
 
 }
-
-
-/* =========================================================
-   COMMON RESULT SELECT
-========================================================= */
-
-const RESULT_COLUMNS = [
-  "id",
-  "project_id",
-  "title",
-  "hypothesis",
-  "content",
-  "status",
-  "evaluation",
-  "confidence_level",
-  "is_human_saved",
-  "created_at"
-].join(",");
 
 
 /* =========================================================
@@ -435,7 +434,19 @@ async function loadHistory() {
           "research_results"
         )
         .select(
-          RESULT_COLUMNS
+          [
+            "id",
+            "project_id",
+            "title",
+            "hypothesis",
+            "content",
+            "status",
+            "evaluation",
+            "confidence_level",
+            "is_human_saved",
+            "created_at",
+            "updated_at"
+          ].join(",")
         )
         .eq(
           "project_id",
@@ -468,25 +479,31 @@ async function loadHistory() {
         `${lastResults.length}件`;
 
 
+    /*
+     * 重要:
+     *
+     * 以前は最初の結果を自動的に
+     * selectedResult に入れていた。
+     *
+     * 今回はそれを完全に削除。
+     *
+     * 「履歴を押す」
+     * ↓
+     * 「詳細を開く」
+     *
+     * というUIにする。
+     */
+
+    selectedResult = null;
+
+
+    clearDetail();
+
+
     renderResults(
       box,
       lastResults
     );
-
-
-    if (
-      lastResults.length &&
-      !selectedResult
-    ) {
-
-      selectedResult =
-        lastResults[0];
-
-      renderDetail(
-        selectedResult
-      );
-
-    }
 
 
   } catch (error) {
@@ -505,6 +522,28 @@ async function loadHistory() {
       </div>`;
 
   }
+
+}
+
+
+/* =========================================================
+   CLEAR DETAIL
+========================================================= */
+
+function clearDetail() {
+
+  const detail =
+    $("detail");
+
+  if (!detail)
+    return;
+
+
+  detail.innerHTML = `
+    <div class="empty">
+      研究結果を選択してください。
+    </div>
+  `;
 
 }
 
@@ -539,7 +578,19 @@ async function loadSaved() {
           "research_results"
         )
         .select(
-          RESULT_COLUMNS
+          [
+            "id",
+            "project_id",
+            "title",
+            "hypothesis",
+            "content",
+            "status",
+            "evaluation",
+            "confidence_level",
+            "is_human_saved",
+            "created_at",
+            "updated_at"
+          ].join(",")
         )
         .eq(
           "project_id",
@@ -720,99 +771,6 @@ async function loadJobs() {
 
 
 /* =========================================================
-   AI MEMORY
-========================================================= */
-
-async function loadMemory() {
-
-  const box =
-    $("memoryList");
-
-  if (!box)
-    return;
-
-
-  try {
-
-    const {
-      count,
-      error
-    } =
-      await sb
-        .from(
-          "research_results"
-        )
-        .select(
-          "id",
-          {
-            count: "exact",
-            head: true
-          }
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        );
-
-
-    if (error)
-      throw error;
-
-
-    box.innerHTML = `
-
-      <div class="memory-stat">
-
-        <strong>
-          ${count ?? 0}
-        </strong>
-
-        <span>
-          AI側に保存されている研究結果
-        </span>
-
-      </div>
-
-
-      <div class="info-card">
-
-        <h3>
-          AI研究メモリ
-        </h3>
-
-        <p>
-          DBには研究結果をすべて保存します。
-          画面上では最新${MAX_VISIBLE_RESULTS}件だけを表示します。
-        </p>
-
-        <p>
-          AIはこの履歴から、
-          失敗した理由、反例、
-          過去に試した研究ルート、
-          成功した検証方法などを
-          次の研究コンテキストとして利用できます。
-        </p>
-
-      </div>
-
-    `;
-
-
-  } catch (error) {
-
-    box.innerHTML =
-      `<div class="error">
-        ${esc(
-          error.message
-        )}
-      </div>`;
-
-  }
-
-}
-
-
-/* =========================================================
    LOAD ROUTES
 ========================================================= */
 
@@ -848,9 +806,7 @@ async function loadRoutes() {
             ascending: false
           }
         )
-        .limit(
-          ROUTE_RESULTS
-        );
+        .limit(100);
 
 
     if (error)
@@ -949,7 +905,7 @@ function renderResults(
   rows
 ) {
 
-  if (!rows?.length) {
+  if (!rows.length) {
 
     box.innerHTML =
       `<div class="empty">
@@ -969,6 +925,7 @@ function renderResults(
         data-id="${esc(
           result.id
         )}"
+        type="button"
       >
 
         <span class="symbol">
@@ -1000,12 +957,15 @@ function renderResults(
 
         </span>
 
+
         <span>
+
           ${
             result.is_human_saved
               ? "★"
               : ""
           }
+
         </span>
 
       </button>
@@ -1027,9 +987,7 @@ function renderResults(
             rows.find(
               item =>
                 String(item.id) ===
-                String(
-                  element.dataset.id
-                )
+                String(element.dataset.id)
             );
 
 
@@ -1167,6 +1125,7 @@ function renderDetail(
       <button
         id="saveDetail"
         class="button primary"
+        type="button"
       >
         ${
           result.is_human_saved
@@ -1179,6 +1138,7 @@ function renderDetail(
       <button
         id="reverifyDetail"
         class="button secondary"
+        type="button"
       >
         🔄 再検証
       </button>
@@ -1209,7 +1169,7 @@ function renderDetail(
 
 
 /* =========================================================
-   SAVE
+   SAVE RESULT
 ========================================================= */
 
 async function toggleSave(
@@ -1219,9 +1179,7 @@ async function toggleSave(
   try {
 
     const newValue =
-      !Boolean(
-        result.is_human_saved
-      );
+      !result.is_human_saved;
 
 
     const {
@@ -1261,11 +1219,6 @@ async function toggleSave(
     );
 
 
-    renderDetail(
-      result
-    );
-
-
     await loadHistory();
 
     await loadSaved();
@@ -1281,6 +1234,272 @@ async function toggleSave(
     );
 
   }
+
+}
+
+
+/* =========================================================
+   KICK WORKER
+========================================================= */
+
+/*
+ * 研究ジョブをDBに登録しただけでは
+ * queued のままになる可能性がある。
+ *
+ * そこで登録直後に kick-worker を呼ぶ。
+ *
+ * kick-workerの役割:
+ *
+ * research_jobs
+ *       ↓
+ * GitHub Actions / Worker
+ *
+ * を起動すること。
+ */
+
+async function kickWorker(
+  jobId
+) {
+
+  if (!jobId)
+    throw new Error(
+      "jobIdがありません。"
+    );
+
+
+  if (isKickingWorker)
+    return;
+
+
+  isKickingWorker = true;
+
+
+  try {
+
+    const response =
+      await Promise.race([
+
+        sb.functions.invoke(
+          KICK_WORKER_FUNCTION,
+          {
+            body: {
+              job_id:
+                jobId,
+
+              project_id:
+                PROJECT_ID
+            }
+          }
+        ),
+
+        new Promise(
+          (_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Worker起動要求がタイムアウトしました。"
+                  )
+                ),
+              WORKER_TIMEOUT
+            )
+        )
+
+      ]);
+
+
+    if (response.error)
+      throw response.error;
+
+
+    console.log(
+      "kick-worker:",
+      response.data
+    );
+
+
+    return response.data;
+
+
+  } finally {
+
+    isKickingWorker =
+      false;
+
+  }
+
+}
+
+
+/* =========================================================
+   CREATE RESEARCH JOB
+========================================================= */
+
+async function createResearchJob({
+  jobType,
+  priority,
+  payload
+}) {
+
+  const {
+    data,
+    error
+  } =
+    await sb
+      .from(
+        "research_jobs"
+      )
+      .insert({
+
+        project_id:
+          PROJECT_ID,
+
+        job_type:
+          jobType,
+
+        status:
+          "queued",
+
+        priority:
+          priority ?? 10,
+
+        payload
+
+      })
+      .select(
+        [
+          "id",
+          "project_id",
+          "job_type",
+          "status",
+          "priority",
+          "payload",
+          "result",
+          "error_message",
+          "started_at",
+          "finished_at",
+          "created_at"
+        ].join(",")
+      )
+      .single();
+
+
+  if (error)
+    throw error;
+
+
+  if (!data?.id)
+    throw new Error(
+      "研究ジョブIDを取得できませんでした。"
+    );
+
+
+  /*
+   * ブラウザを閉じても復旧できるよう
+   * job IDを保存。
+   */
+
+  setActiveJob(
+    data
+  );
+
+
+  /*
+   * 最重要:
+   *
+   * DB登録だけで終わらせない。
+   *
+   * Worker起動要求を送る。
+   */
+
+  try {
+
+    await kickWorker(
+      data.id
+    );
+
+  } catch (workerError) {
+
+    console.error(
+      "Worker kick failed:",
+      workerError
+    );
+
+
+    /*
+     * ジョブ自体はDBに残す。
+     *
+     * ここで削除しない。
+     *
+     * GitHub Actionsの定期実行が
+     * queuedジョブを拾える構成なら
+     * 復旧可能だから。
+     */
+
+    setStatus(
+      "研究ジョブは登録されましたが、Workerの即時起動確認に失敗しました。バックグラウンドWorkerの再取得を待機します。",
+      "error"
+    );
+
+  }
+
+
+  return data;
+
+}
+
+
+/* =========================================================
+   ACTIVE JOB
+========================================================= */
+
+function setActiveJob(
+  job
+) {
+
+  activeJobId =
+    job?.id || null;
+
+
+  activeJobCreatedAt =
+    job?.created_at ||
+    new Date().toISOString();
+
+
+  if (activeJobId) {
+
+    localStorage.setItem(
+      "active_research_job",
+      activeJobId
+    );
+
+    localStorage.setItem(
+      "active_research_job_created_at",
+      activeJobCreatedAt
+    );
+
+  }
+
+}
+
+
+/* =========================================================
+   CLEAR ACTIVE JOB
+========================================================= */
+
+function clearActiveJob() {
+
+  activeJobId = null;
+
+  activeJobCreatedAt = null;
+
+  localStorage.removeItem(
+    "active_research_job"
+  );
+
+  localStorage.removeItem(
+    "active_research_job_created_at"
+  );
 
 }
 
@@ -1321,12 +1540,30 @@ async function requestReverification(
       verification_modes: [
 
         "contradiction",
+
         "backward_reasoning",
+
         "induction",
+
         "deduction",
+
         "counterexample",
+
         "alternative_derivation",
-        "literature_comparison"
+
+        "literature_comparison",
+
+        "boundary_case",
+
+        "assumption_removal",
+
+        "generalization",
+
+        "specialization",
+
+        "analogy",
+
+        "computational_test"
 
       ],
 
@@ -1336,57 +1573,28 @@ async function requestReverification(
     };
 
 
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .insert({
+    const job =
+      await createResearchJob({
 
-          project_id:
-            PROJECT_ID,
+        jobType:
+          "reverification",
 
-          job_type:
-            "reverification",
+        priority:
+          20,
 
-          status:
-            "queued",
+        payload
 
-          priority:
-            20,
-
-          payload
-
-        })
-        .select()
-        .single();
-
-
-    if (error)
-      throw error;
+      });
 
 
     setStatus(
-      "⭕️研究結果を再検証キューへ登録しました。",
+      "研究結果を再検証キューへ登録し、Workerを起動しました。",
       "success"
     );
 
 
-    activeJobId =
-      data.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
     renderJob(
-      data
+      job
     );
 
 
@@ -1409,6 +1617,123 @@ async function requestReverification(
     );
 
   }
+
+}
+
+
+/* =========================================================
+   RESEARCH MODE
+========================================================= */
+
+function getResearchMode() {
+
+  /*
+   * index.html側に
+   *
+   * researchMode
+   *
+   * が存在すれば使用。
+   */
+
+  const element =
+    $("researchMode");
+
+
+  if (
+    element?.value
+  ) {
+    return element.value;
+  }
+
+
+  return "mathematics";
+
+}
+
+
+/* =========================================================
+   PHYSICS MODE
+========================================================= */
+
+function getPhysicsMode() {
+
+  const element =
+    $("physicsMode");
+
+
+  if (
+    element
+  ) {
+
+    if (
+      element.type ===
+      "checkbox"
+    ) {
+      return element.checked;
+    }
+
+    return (
+      element.value ===
+      "true"
+    );
+
+  }
+
+
+  return false;
+
+}
+
+
+/* =========================================================
+   RESEARCH APPROACHES
+========================================================= */
+
+function getResearchApproaches() {
+
+  return [
+
+    "hypothesis_generation",
+
+    "contradiction",
+
+    "backward_reasoning",
+
+    "forward_reasoning",
+
+    "induction",
+
+    "deduction",
+
+    "counterexample_search",
+
+    "boundary_case_analysis",
+
+    "assumption_removal",
+
+    "generalization",
+
+    "specialization",
+
+    "alternative_derivation",
+
+    "transformation",
+
+    "analogy",
+
+    "computational_experiment",
+
+    "literature_comparison",
+
+    "known_result_connection",
+
+    "failure_analysis",
+
+    "adversarial_result_destruction",
+
+    "independent_verification"
+
+  ];
 
 }
 
@@ -1447,28 +1772,54 @@ async function startResearch() {
   }
 
 
+  /*
+   * 既に実行中のジョブがある場合、
+   * 同時研究を防ぐ。
+   */
+
+  if (activeJobId) {
+
+    const existing =
+      await getActiveJob();
+
+
+    if (
+      existing &&
+      !TERMINAL_STATUSES
+        .includes(
+          existing.status
+        )
+    ) {
+
+      setStatus(
+        "すでに実行中の研究があります。先に現在の研究を確認してください。",
+        "error"
+      );
+
+      return;
+
+    }
+
+    clearActiveJob();
+
+  }
+
+
   isStartingResearch =
     true;
 
 
-  const researchButton =
-    $("researchButton");
+  if ($("researchButton"))
+    $("researchButton")
+      .disabled = true;
 
-  const stopButton =
-    $("stopButton");
-
-
-  if (researchButton)
-    researchButton.disabled =
-      true;
-
-  if (stopButton)
-    stopButton.disabled =
-      false;
+  if ($("stopButton"))
+    $("stopButton")
+      .disabled = false;
 
 
   setStatus(
-    "研究ジョブをキューへ登録しています..."
+    "過去研究を分析しています..."
   );
 
 
@@ -1480,110 +1831,119 @@ async function startResearch() {
       );
 
 
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .insert({
-
-          project_id:
-            PROJECT_ID,
-
-          job_type:
-            "research_cycle",
-
-          status:
-            "queued",
-
-          priority:
-            10,
-
-          payload: {
-
-            theme,
-
-            source:
-              "Research AI Lab",
-
-            mode:
-              "autonomous_research",
-
-            context,
-
-            research_rules: {
-
-              no_plausible_lies:
-                true,
-
-              no_unverified_claims:
-                true,
-
-              counterexample_search:
-                true,
-
-              literature_verification:
-                true,
-
-              known_math_avoidance:
-                true,
-
-              route_block_after:
-                3,
-
-              independent_verification:
-                true,
-
-              alternative_proofs:
-                true
-
-            }
-
-          }
-
-        })
-        .select(
-          [
-            "id",
-            "project_id",
-            "job_type",
-            "status",
-            "priority",
-            "payload",
-            "result",
-            "error_message",
-            "started_at",
-            "finished_at",
-            "created_at"
-          ].join(",")
-        )
-        .single();
+    const researchMode =
+      getResearchMode();
 
 
-    if (error)
-      throw error;
+    const physicsEnabled =
+      getPhysicsMode();
 
 
-    activeJobId =
-      data.id;
+    const approaches =
+      getResearchApproaches();
 
 
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
+    const payload = {
+
+      theme,
+
+      source:
+        "Research AI Lab",
+
+      mode:
+        "autonomous_research",
+
+      research_mode:
+        researchMode,
+
+      physics_enabled:
+        physicsEnabled,
+
+      context,
+
+      research_approaches:
+        approaches,
+
+      research_rules: {
+
+        no_plausible_lies:
+          true,
+
+        no_unverified_claims:
+          true,
+
+        do_not_stop_because_unsolved:
+          true,
+
+        continue_trial_when_unsolved:
+          true,
+
+        counterexample_search:
+          true,
+
+        literature_verification:
+          true,
+
+        known_math_avoidance:
+          true,
+
+        route_block_after:
+          3,
+
+        independent_verification:
+          true,
+
+        alternative_proofs:
+          true,
+
+        destroy_current_conclusion:
+          true,
+
+        derive_variants:
+          true,
+
+        analyze_failure_causes:
+          true,
+
+        cross_research_memory:
+          true,
+
+        separate_research_topics:
+          true
+
+      }
+
+    };
+
+
+    /*
+     * 研究ジョブ作成
+     *
+     * createResearchJob内で
+     * kick-workerまで行う。
+     */
+
+    const job =
+      await createResearchJob({
+
+        jobType:
+          "research_cycle",
+
+        priority:
+          10,
+
+        payload
+
+      });
 
 
     renderJob(
-      data
+      job
     );
 
 
     setStatus(
-      "研究をキューに登録しました。バックグラウンド研究を開始します。",
+      "研究ジョブを登録しました。バックグラウンドWorkerを起動しています。",
       "success"
     );
 
@@ -1599,13 +1959,13 @@ async function startResearch() {
     );
 
 
-    if (researchButton)
-      researchButton.disabled =
-        false;
+    if ($("researchButton"))
+      $("researchButton")
+        .disabled = false;
 
-    if (stopButton)
-      stopButton.disabled =
-        true;
+    if ($("stopButton"))
+      $("stopButton")
+        .disabled = true;
 
 
     setStatus(
@@ -1666,7 +2026,7 @@ async function getResearchContext(
           }
         )
         .limit(
-          CONTEXT_RESULTS
+          CONTEXT_LIMIT
         );
 
 
@@ -1689,6 +2049,7 @@ async function getResearchContext(
       previous_results:
         results.map(
           item => ({
+
             id:
               item.id,
 
@@ -1708,6 +2069,7 @@ async function getResearchContext(
               parseJson(
                 item.content
               )
+
           })
         )
 
@@ -1736,6 +2098,72 @@ async function getResearchContext(
 
 
 /* =========================================================
+   GET ACTIVE JOB
+========================================================= */
+
+async function getActiveJob() {
+
+  if (!activeJobId)
+    return null;
+
+
+  try {
+
+    const {
+      data,
+      error
+    } =
+      await sb
+        .from(
+          "research_jobs"
+        )
+        .select(
+          [
+            "id",
+            "project_id",
+            "job_type",
+            "status",
+            "priority",
+            "payload",
+            "result",
+            "error_message",
+            "started_at",
+            "finished_at",
+            "created_at"
+          ].join(",")
+        )
+        .eq(
+          "id",
+          activeJobId
+        )
+        .eq(
+          "project_id",
+          PROJECT_ID
+        )
+        .maybeSingle();
+
+
+    if (error)
+      throw error;
+
+
+    return data || null;
+
+  } catch (error) {
+
+    console.error(
+      "getActiveJob:",
+      error
+    );
+
+    return null;
+
+  }
+
+}
+
+
+/* =========================================================
    STOP
 ========================================================= */
 
@@ -1753,12 +2181,9 @@ async function stopResearch() {
   }
 
 
-  const stopButton =
-    $("stopButton");
-
-  if (stopButton)
-    stopButton.disabled =
-      true;
+  if ($("stopButton"))
+    $("stopButton")
+      .disabled = true;
 
 
   try {
@@ -1829,9 +2254,9 @@ async function stopResearch() {
 
   } catch (error) {
 
-    if (stopButton)
-      stopButton.disabled =
-        false;
+    if ($("stopButton"))
+      $("stopButton")
+        .disabled = false;
 
 
     setStatus(
@@ -1867,12 +2292,14 @@ function renderJob(
 
 
   if ($("jobId"))
-    $("jobId").textContent =
+    $("jobId")
+      .textContent =
       job.id || "—";
 
 
   if ($("jobStatus"))
-    $("jobStatus").textContent =
+    $("jobStatus")
+      .textContent =
       String(
         job.status ||
         "unknown"
@@ -1880,21 +2307,24 @@ function renderJob(
 
 
   if ($("jobCreated"))
-    $("jobCreated").textContent =
+    $("jobCreated")
+      .textContent =
       formatDate(
         job.created_at
       );
 
 
   if ($("jobStarted"))
-    $("jobStarted").textContent =
+    $("jobStarted")
+      .textContent =
       formatDate(
         job.started_at
       );
 
 
   if ($("jobFinished"))
-    $("jobFinished").textContent =
+    $("jobFinished")
+      .textContent =
       formatDate(
         job.finished_at
       );
@@ -1959,6 +2389,14 @@ function renderJob(
 
       break;
 
+
+    default:
+
+      percent = 5;
+
+      text =
+        "状態確認中";
+
   }
 
 
@@ -1978,6 +2416,126 @@ function renderJob(
     $("progressText")
       .textContent =
       text;
+
+}
+
+
+/* =========================================================
+   QUEUED WATCHDOG
+========================================================= */
+
+function startQueuedWatchdog(
+  job
+) {
+
+  stopQueuedWatchdog();
+
+
+  if (
+    !job?.created_at ||
+    job.status !== "queued"
+  ) {
+    return;
+  }
+
+
+  const created =
+    new Date(
+      job.created_at
+    ).getTime();
+
+
+  queuedWarningTimer =
+    setInterval(
+      async () => {
+
+        const current =
+          await getActiveJob();
+
+
+        if (!current) {
+
+          stopQueuedWatchdog();
+
+          return;
+
+        }
+
+
+        if (
+          current.status !==
+          "queued"
+        ) {
+
+          stopQueuedWatchdog();
+
+          return;
+
+        }
+
+
+        const age =
+          Date.now() -
+          created;
+
+
+        if (
+          age >=
+          QUEUED_WARNING_TIME
+        ) {
+
+          setStatus(
+            "Workerの処理開始を待っています。Workerがqueuedジョブを取得できるか確認中です。",
+            "error"
+          );
+
+
+          /*
+           * 再度kickを試す。
+           */
+
+          try {
+
+            await kickWorker(
+              current.id
+            );
+
+          } catch (error) {
+
+            console.warn(
+              "Worker retry:",
+              error
+            );
+
+          }
+
+        }
+
+      },
+      10000
+    );
+
+}
+
+
+/* =========================================================
+   STOP QUEUED WATCHDOG
+========================================================= */
+
+function stopQueuedWatchdog() {
+
+  if (
+    queuedWarningTimer
+  ) {
+
+    clearInterval(
+      queuedWarningTimer
+    );
+
+    queuedWarningTimer =
+      null;
+
+  }
 
 }
 
@@ -2034,14 +2592,11 @@ async function refreshActiveJob() {
 
     if (!data) {
 
-      activeJobId =
-        null;
-
-      localStorage.removeItem(
-        "active_research_job"
-      );
-
       stopPolling();
+
+      stopQueuedWatchdog();
+
+      clearActiveJob();
 
       if ($("researchButton"))
         $("researchButton")
@@ -2051,6 +2606,11 @@ async function refreshActiveJob() {
         $("stopButton")
           .disabled = true;
 
+      setStatus(
+        "研究ジョブが見つかりません。",
+        "error"
+      );
+
       return;
 
     }
@@ -2059,6 +2619,22 @@ async function refreshActiveJob() {
     renderJob(
       data
     );
+
+
+    if (
+      data.status ===
+      "queued"
+    ) {
+
+      startQueuedWatchdog(
+        data
+      );
+
+    } else {
+
+      stopQueuedWatchdog();
+
+    }
 
 
     const finished =
@@ -2073,6 +2649,8 @@ async function refreshActiveJob() {
 
 
     stopPolling();
+
+    stopQueuedWatchdog();
 
 
     if ($("researchButton"))
@@ -2094,10 +2672,15 @@ async function refreshActiveJob() {
         "success"
       );
 
-      selectedResult =
-        null;
+
+      /*
+       * Workerがresearch_resultsへ
+       * 保存した結果を再取得。
+       */
 
       await loadHistory();
+
+      await loadJobs();
 
     }
 
@@ -2110,10 +2693,13 @@ async function refreshActiveJob() {
       setStatus(
         `研究失敗: ${
           data.error_message ||
-          "GitHub Actions worker error"
+          "Worker error"
         }`,
         "error"
       );
+
+
+      await loadJobs();
 
     }
 
@@ -2128,16 +2714,13 @@ async function refreshActiveJob() {
         "success"
       );
 
+
+      await loadJobs();
+
     }
 
 
-    activeJobId =
-      null;
-
-
-    localStorage.removeItem(
-      "active_research_job"
-    );
+    clearActiveJob();
 
 
   } catch (error) {
@@ -2160,6 +2743,7 @@ function startPolling() {
 
   stopPolling();
 
+
   refreshActiveJob();
 
 
@@ -2171,6 +2755,10 @@ function startPolling() {
 
 }
 
+
+/* =========================================================
+   STOP POLLING
+========================================================= */
 
 function stopPolling() {
 
@@ -2284,6 +2872,7 @@ async function loadMemos() {
             data-id="${esc(
               memo.id
             )}"
+            type="button"
           >
             削除
           </button>
@@ -2383,10 +2972,12 @@ async function saveMemo() {
 
 
     if ($("memoTitle"))
-      $("memoTitle").value = "";
+      $("memoTitle")
+        .value = "";
 
     if ($("memoContent"))
-      $("memoContent").value = "";
+      $("memoContent")
+        .value = "";
 
 
     setStatus(
@@ -2486,24 +3077,232 @@ async function recoverJob() {
     return;
 
 
-  await refreshActiveJob();
+  const job =
+    await getActiveJob();
 
 
-  if (activeJobId) {
+  if (!job) {
 
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = true;
+    clearActiveJob();
 
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = false;
-
-    startPolling();
+    return;
 
   }
 
+
+  if (
+    TERMINAL_STATUSES
+      .includes(
+        job.status
+      )
+  ) {
+
+    await refreshActiveJob();
+
+    return;
+
+  }
+
+
+  /*
+   * ブラウザを閉じていた間も
+   * DB側のジョブは残っている。
+   */
+
+  renderJob(
+    job
+  );
+
+
+  if ($("researchButton"))
+    $("researchButton")
+      .disabled = true;
+
+  if ($("stopButton"))
+    $("stopButton")
+      .disabled = false;
+
+
+  setStatus(
+    "バックグラウンド研究を復旧しました。",
+    "success"
+  );
+
+
+  /*
+   * queuedならWorker起動を
+   * 再度要求する。
+   */
+
+  if (
+    job.status ===
+    "queued"
+  ) {
+
+    try {
+
+      await kickWorker(
+        job.id
+      );
+
+    } catch (error) {
+
+      console.warn(
+        "Recovery worker kick:",
+        error
+      );
+
+    }
+
+  }
+
+
+  startPolling();
+
 }
+
+
+/* =========================================================
+   EXTERNAL RESEARCH IMPORT
+========================================================= */
+
+/*
+ * Claude等で考えた研究結果を
+ * AI研究へ渡すための共通API。
+ *
+ * 例:
+ *
+ * window.ResearchAI.importExternalResearch({
+ *   source: "Claude",
+ *   theme: "...",
+ *   content: "...",
+ *   conclusion: "..."
+ * });
+ */
+
+async function importExternalResearch(
+  research
+) {
+
+  if (!research)
+    throw new Error(
+      "研究データがありません。"
+    );
+
+
+  const theme =
+    research.theme ||
+    "External Research";
+
+
+  const payload = {
+
+    theme,
+
+    source:
+      research.source ||
+      "external_ai",
+
+    external_research:
+      research,
+
+    research_rules: {
+
+      critique_external_result:
+        true,
+
+      counterexample_search:
+        true,
+
+      independent_verification:
+        true,
+
+      do_not_trust_external_conclusion:
+        true,
+
+      derive_alternatives:
+        true
+
+    }
+
+  };
+
+
+  const job =
+    await createResearchJob({
+
+      jobType:
+        "external_research_verification",
+
+      priority:
+        15,
+
+      payload
+
+    });
+
+
+  renderJob(
+    job
+  );
+
+
+  setStatus(
+    "外部AIの研究結果を検証キューへ登録しました。",
+    "success"
+  );
+
+
+  startPolling();
+
+
+  return job;
+
+}
+
+
+/* =========================================================
+   PUBLIC AI BRIDGE
+========================================================= */
+
+window.ResearchAI = {
+
+  /*
+   * 外部AIの結果を投入。
+   */
+  importExternalResearch,
+
+
+  /*
+   * 現在の研究結果。
+   */
+  getCurrentResearch() {
+
+    return selectedResult;
+
+  },
+
+
+  /*
+   * 過去研究コンテキスト。
+   */
+  getResearchContext() {
+
+    return researchContext;
+
+  },
+
+
+  /*
+   * 現在のジョブ。
+   */
+  async getActiveJob() {
+
+    return getActiveJob();
+
+  }
+
+};
 
 
 /* =========================================================
@@ -2538,69 +3337,68 @@ window.ResearchModelBridge = {
       }`;
 
 
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .insert({
+    const payload = {
 
-          project_id:
-            PROJECT_ID,
+      theme,
 
-          job_type:
-            "model_experiment",
+      model:
+        modelData,
 
-          status:
-            "queued",
+      source:
+        "3D mathematical model",
 
-          priority:
-            5,
+      mode:
+        "model_experiment",
 
-          payload: {
+      physics_enabled:
+        getPhysicsMode(),
 
-            theme,
+      research_rules: {
 
-            model:
-              modelData,
+        counterexample_search:
+          true,
 
-            source:
-              "3D mathematical model",
+        alternative_transformations:
+          true,
 
-            mode:
-              "model_experiment",
+        physical_analogy:
+          true,
 
-            research_rules: {
+        destroy_current_model:
+          true,
 
-              counterexample_search:
-                true,
+        derive_model_variants:
+          true,
 
-              alternative_transformations:
-                true,
+        no_unverified_claims:
+          true,
 
-              physical_analogy:
-                true,
+        independent_verification:
+          true
 
-              no_unverified_claims:
-                true
+      }
 
-            }
-
-          }
-
-        })
-        .select()
-        .single();
+    };
 
 
-    if (error)
-      throw error;
+    const job =
+      await createResearchJob({
+
+        jobType:
+          "model_experiment",
+
+        priority:
+          5,
+
+        payload
+
+      });
 
 
-    return data;
+    startPolling();
+
+
+    return job;
 
   }
 
@@ -2612,6 +3410,10 @@ window.ResearchModelBridge = {
 ========================================================= */
 
 function init() {
+
+  /*
+   * NAVIGATION
+   */
 
   document
     .querySelectorAll(
@@ -2625,10 +3427,14 @@ function init() {
           showPage(
             button.dataset.page
           )
-      );
+        );
 
     });
 
+
+  /*
+   * RESEARCH
+   */
 
   $("researchButton")
     ?.addEventListener(
@@ -2637,12 +3443,20 @@ function init() {
     );
 
 
+  /*
+   * STOP
+   */
+
   $("stopButton")
     ?.addEventListener(
       "click",
       stopResearch
     );
 
+
+  /*
+   * CLEAR
+   */
 
   $("clearButton")
     ?.addEventListener(
@@ -2659,6 +3473,10 @@ function init() {
     );
 
 
+  /*
+   * MEMO
+   */
+
   $("memoSaveButton")
     ?.addEventListener(
       "click",
@@ -2666,9 +3484,23 @@ function init() {
     );
 
 
+  /*
+   * INITIAL CONNECTION
+   */
+
   checkConnection();
 
+
+  /*
+   * HISTORY
+   */
+
   loadHistory();
+
+
+  /*
+   * BACKGROUND JOB RECOVERY
+   */
 
   recoverJob();
 
