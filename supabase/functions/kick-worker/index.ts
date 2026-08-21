@@ -2,24 +2,14 @@
 // Research AI Lab
 // supabase/functions/kick-worker/index.ts
 //
-// Worker:
-//   research_jobs の queued ジョブを取得
-//   ↓
-//   smart-handler に研究内容を引き継ぐ
-//   ↓
-//   smart-handler がAI研究を実行
-//
-// 重要:
-//   job_id / project_id だけではなく
-//   message / theme / prompt / research_prompt 等を
-//   可能な限り smart-handler に渡す。
+// Queue Worker
+// - queued job を取得
+// - payload から theme / message を安全に取得
+// - smart-handler に明示的に渡す
+// - smart-handler の結果を返す
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-// ============================================================
-// Environment
-// ============================================================
 
 const SUPABASE_URL =
   Deno.env.get("SUPABASE_URL") ?? "";
@@ -28,23 +18,21 @@ const SUPABASE_SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
 if (!SUPABASE_URL) {
-  console.error("SUPABASE_URL is missing");
+  throw new Error("SUPABASE_URL is not configured");
 }
 
 if (!SUPABASE_SERVICE_ROLE_KEY) {
-  console.error(
-    "SUPABASE_SERVICE_ROLE_KEY is missing"
+  throw new Error(
+    "SUPABASE_SERVICE_ROLE_KEY is not configured"
   );
 }
 
-const supabase = createClient(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase =
+  createClient(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY
+  );
 
-// ============================================================
-// CORS
-// ============================================================
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,14 +42,16 @@ const corsHeaders = {
     "POST, OPTIONS"
 };
 
-// ============================================================
-// JSON response
-// ============================================================
+
+/* =========================================================
+   JSON RESPONSE
+========================================================= */
 
 function json(
   body: unknown,
   status = 200
 ) {
+
   return new Response(
     JSON.stringify(body),
     {
@@ -73,63 +63,162 @@ function json(
       }
     }
   );
+
 }
 
-// ============================================================
-// Utility
-// ============================================================
 
-function cleanString(
+/* =========================================================
+   SAFE JSON
+========================================================= */
+
+function parseJson(
   value: unknown
-): string | null {
+): Record<string, any> {
 
   if (
-    typeof value !== "string"
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
   ) {
-    return null;
+
+    return value as Record<string, any>;
+
   }
 
-  const trimmed =
-    value.trim();
 
-  return trimmed.length > 0
-    ? trimmed
-    : null;
+  if (
+    typeof value === "string"
+  ) {
+
+    try {
+
+      const parsed =
+        JSON.parse(value);
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed)
+      ) {
+
+        return parsed;
+
+      }
+
+    } catch {
+
+      // JSONでなくても後段で処理する
+
+    }
+
+  }
+
+
+  return {};
+
 }
 
-function firstString(
-  ...values: unknown[]
-): string | null {
+
+/* =========================================================
+   TEXT NORMALIZATION
+========================================================= */
+
+function cleanText(
+  value: unknown
+): string {
+
+  if (
+    value === null ||
+    value === undefined
+  ) {
+
+    return "";
+
+  }
+
+
+  return String(value).trim();
+
+}
+
+
+/* =========================================================
+   EXTRACT RESEARCH THEME
+========================================================= */
+
+function extractTheme(
+  job: any
+): string {
+
+  const payload =
+    parseJson(job?.payload);
+
+
+  /*
+   * 優先順位
+   *
+   * 1. payload.theme
+   * 2. payload.message
+   * 3. payload.question
+   * 4. job.theme
+   * 5. job.message
+   * 6. payload.title
+   */
+
+  const candidates = [
+
+    payload.theme,
+
+    payload.message,
+
+    payload.question,
+
+    job?.theme,
+
+    job?.message,
+
+    payload.title
+
+  ];
+
 
   for (
-    const value of values
+    const candidate of candidates
   ) {
 
-    const result =
-      cleanString(value);
+    const text =
+      cleanText(candidate);
 
-    if (result) {
-      return result;
+
+    if (text) {
+
+      return text;
+
     }
+
   }
 
-  return null;
+
+  return "";
+
 }
 
-// ============================================================
-// Main
-// ============================================================
+
+/* =========================================================
+   POST
+========================================================= */
 
 Deno.serve(
   async (req) => {
 
-    // ========================================================
-    // CORS
-    // ========================================================
+    /* -------------------------------------------------------
+       CORS
+    ------------------------------------------------------- */
 
     if (
       req.method === "OPTIONS"
     ) {
+
       return new Response(
         "ok",
         {
@@ -137,48 +226,34 @@ Deno.serve(
             corsHeaders
         }
       );
+
     }
 
-    // ========================================================
-    // POST only
-    // ========================================================
+
+    /* -------------------------------------------------------
+       POST ONLY
+    ------------------------------------------------------- */
 
     if (
       req.method !== "POST"
     ) {
+
       return json(
         {
           ok: false,
-          error:
-            "POST only"
+          error: "POST only"
         },
         405
       );
+
     }
 
-    // ========================================================
-    // Validate environment
-    // ========================================================
-
-    if (
-      !SUPABASE_URL ||
-      !SUPABASE_SERVICE_ROLE_KEY
-    ) {
-      return json(
-        {
-          ok: false,
-          error:
-            "Supabase environment is not configured"
-        },
-        500
-      );
-    }
 
     try {
 
-      // ======================================================
-      // Request body
-      // ======================================================
+      /* -----------------------------------------------------
+         REQUEST BODY
+      ----------------------------------------------------- */
 
       const body =
         await req
@@ -187,19 +262,22 @@ Deno.serve(
             () => ({})
           );
 
+
       const requestedJobId =
-        cleanString(
+        cleanText(
           body?.job_id
-        );
+        ) || null;
+
 
       const requestedProjectId =
-        cleanString(
+        cleanText(
           body?.project_id
-        );
+        ) || null;
 
-      // ======================================================
-      // Find queued job
-      // ======================================================
+
+      /* -----------------------------------------------------
+         FIND QUEUED JOB
+      ----------------------------------------------------- */
 
       let query =
         supabase
@@ -214,38 +292,43 @@ Deno.serve(
           .order(
             "priority",
             {
-              ascending:
-                false
+              ascending: false
             }
           )
           .order(
             "created_at",
             {
-              ascending:
-                true
+              ascending: true
             }
           )
           .limit(1);
 
+
       if (
         requestedJobId
       ) {
+
         query =
           query.eq(
             "id",
             requestedJobId
           );
+
       }
+
 
       if (
         requestedProjectId
       ) {
+
         query =
           query.eq(
             "project_id",
             requestedProjectId
           );
+
       }
+
 
       const {
         data: job,
@@ -254,140 +337,139 @@ Deno.serve(
         await query
           .maybeSingle();
 
+
       if (jobError) {
+
+        console.error(
+          "Failed to fetch queued job:",
+          jobError
+        );
+
         throw jobError;
+
       }
 
-      // ======================================================
-      // Nothing to process
-      // ======================================================
+
+      /* -----------------------------------------------------
+         NO JOB
+      ----------------------------------------------------- */
 
       if (!job) {
 
         return json({
+
           ok: true,
 
-          processed:
-            false,
+          processed: false,
 
           message:
             "No queued jobs"
+
         });
 
       }
 
+
+      /* -----------------------------------------------------
+         EXTRACT PAYLOAD
+      ----------------------------------------------------- */
+
+      const payload =
+        parseJson(
+          job.payload
+        );
+
+
+      const theme =
+        extractTheme(
+          job
+        );
+
+
       console.log(
-        "Queued research job found:",
+        "Queued job:",
         job.id
       );
 
-      // ======================================================
-      // Extract research input
-      //
-      // DB schemaが多少違っていても対応できるように
-      // 複数の候補から研究内容を取得。
-      // ======================================================
 
-      const message =
-        firstString(
-          job.message,
-          job.research_message,
-          job.user_message,
-          job.prompt,
-          job.research_prompt,
-          job.input,
-          job.query,
-          job.question
-        );
+      console.log(
+        "Job payload:",
+        JSON.stringify(
+          payload
+        )
+      );
 
-      const theme =
-        firstString(
-          job.theme,
-          job.research_theme,
-          job.topic,
-          job.subject,
-          job.title
-        );
 
-      // ======================================================
-      // Research input fallback
-      //
-      // message と theme の両方が無い場合、
-      // job自体が壊れている可能性がある。
-      //
-      // ここでは「勝手な研究テーマ」を作らない。
-      // これは Research AI Lab の
-      // 「根拠のない内容を生成しない」方針のため。
-      // ======================================================
+      console.log(
+        "Extracted theme:",
+        theme
+      );
 
-      if (
-        !message &&
-        !theme
-      ) {
+
+      /* -----------------------------------------------------
+         INVALID JOB
+      ----------------------------------------------------- */
+
+      if (!theme) {
+
+        /*
+         * ここでは smart-handler を呼ばない。
+         *
+         * ただしジョブを勝手にcompletedにはしない。
+         */
 
         console.error(
-          "Queued job has no research input:",
-          job.id
+          "Queued job has no message or theme:",
+          job.id,
+          payload
         );
 
-        // ----------------------------------------------------
-        // failed にする
-        // ----------------------------------------------------
-
-        await supabase
-          .from(
-            "research_jobs"
-          )
-          .update({
-            status:
-              "failed",
-
-            error:
-              "Queued job has no message or theme"
-          })
-          .eq(
-            "id",
-            job.id
-          );
 
         return json(
           {
+
             ok: false,
 
-            processed:
-              false,
+            processed: false,
 
             job_id:
               job.id,
 
             error:
-              "Queued job has no message or theme"
+              "Queued job has no message or theme",
+
+            payload:
+              payload
+
           },
           400
         );
+
       }
 
-      // ======================================================
-      // Mark processing
-      //
-      // 同じジョブが複数Workerから同時実行されるのを
-      // できるだけ防ぐ。
-      // ======================================================
+
+      /* -----------------------------------------------------
+         MARK RUNNING
+      ----------------------------------------------------- */
 
       const {
-        data: claimedJob,
-        error: claimError
+        error: runningError
       } =
         await supabase
           .from(
             "research_jobs"
           )
           .update({
+
             status:
-              "processing",
+              "running",
 
             started_at:
-              new Date().toISOString()
+              new Date().toISOString(),
+
+            error_message:
+              null
+
           })
           .eq(
             "id",
@@ -396,154 +478,92 @@ Deno.serve(
           .eq(
             "status",
             "queued"
-          )
-          .select()
-          .maybeSingle();
+          );
 
-      if (claimError) {
+
+      if (runningError) {
 
         console.error(
-          "Failed to claim job:",
-          claimError
+          "Failed to mark job running:",
+          runningError
         );
 
-        throw claimError;
-      }
-
-      // ======================================================
-      // Job was already claimed
-      // ======================================================
-
-      if (!claimedJob) {
-
-        return json({
-          ok: true,
-
-          processed:
-            false,
-
-          job_id:
-            job.id,
-
-          message:
-            "Job was already claimed by another worker"
-        });
+        throw runningError;
 
       }
 
-      console.log(
-        "Research job claimed:",
-        job.id
-      );
 
-      // ======================================================
-      // smart-handler URL
-      // ======================================================
+      /* -----------------------------------------------------
+         CALL SMART HANDLER
+      ----------------------------------------------------- */
 
       const functionUrl =
         `${SUPABASE_URL}/functions/v1/smart-handler`;
 
-      // ======================================================
-      // Payload
-      // ======================================================
+
+      /*
+       * 重要：
+       *
+       * smart-handler に
+       * theme と message の両方を渡す。
+       *
+       * これで
+       * 「message or theme is required」
+       * を防ぐ。
+       */
 
       const smartHandlerPayload = {
-
-        // ----------------------------------------------
-        // Job identity
-        // ----------------------------------------------
 
         job_id:
           job.id,
 
         project_id:
-          job.project_id ??
-          requestedProjectId ??
-          null,
-
-        // ----------------------------------------------
-        // Research input
-        // ----------------------------------------------
-
-        message:
-          message,
+          job.project_id,
 
         theme:
           theme,
 
-        // ----------------------------------------------
-        // Additional research context
-        // ----------------------------------------------
+        message:
+          theme,
 
-        title:
-          firstString(
-            job.title
-          ),
+        /*
+         * 元のpayloadも保持。
+         */
 
-        prompt:
-          firstString(
-            job.prompt,
-            job.research_prompt
-          ),
+        payload:
+          payload,
 
-        // ----------------------------------------------
-        // Optional research mode
-        // ----------------------------------------------
+        /*
+         * smart-handler側が
+         * payloadを直接見る場合の互換性。
+         */
 
-        mode:
-          firstString(
-            job.mode,
-            job.research_mode
-          ),
+        research_job:
+          job
 
-        domain:
-          firstString(
-            job.domain,
-            job.field
-          ),
-
-        // ----------------------------------------------
-        // Mathematics / physics option
-        // ----------------------------------------------
-
-        physics_enabled:
-          job.physics_enabled ??
-          job.use_physics ??
-          false,
-
-        // ----------------------------------------------
-        // Priority
-        // ----------------------------------------------
-
-        priority:
-          job.priority ??
-          0
       };
 
-      console.log(
-        "Calling smart-handler for job:",
-        job.id
-      );
 
       console.log(
-        "Research input:",
-        {
-          has_message:
-            Boolean(message),
+        "Calling smart-handler with:",
+        JSON.stringify(
+          {
+            job_id:
+              job.id,
 
-          has_theme:
-            Boolean(theme),
+            project_id:
+              job.project_id,
 
-          project_id:
-            job.project_id ??
-            requestedProjectId ??
-            null
-        }
+            theme:
+              theme,
+
+            message:
+              theme
+
+          }
+        )
       );
 
-      // ======================================================
-      // Call smart-handler
-      // ======================================================
 
       const response =
         await fetch(
@@ -562,20 +582,25 @@ Deno.serve(
 
               "apikey":
                 SUPABASE_SERVICE_ROLE_KEY
+
             },
 
             body:
               JSON.stringify(
                 smartHandlerPayload
               )
+
           }
         );
+
 
       const responseText =
         await response.text();
 
+
       let responseData:
         unknown;
+
 
       try {
 
@@ -586,95 +611,81 @@ Deno.serve(
 
       } catch {
 
-        responseData =
-          {
-            raw:
-              responseText
-          };
+        responseData = {
+
+          raw:
+            responseText
+
+        };
 
       }
 
-      // ======================================================
-      // smart-handler failure
-      // ======================================================
 
-      if (!response.ok) {
+      console.log(
+        "smart-handler status:",
+        response.status
+      );
 
-        console.error(
-          "smart-handler failed:",
-          response.status,
+
+      console.log(
+        "smart-handler response:",
+        JSON.stringify(
           responseData
-        );
+        )
+      );
 
-        // ----------------------------------------------------
-        // Return job to queue for retry
-        //
-        // ただし入力不備の場合は無限再試行しない。
-        // ----------------------------------------------------
 
-        const isInputError =
-          response.status === 400;
+      /* -----------------------------------------------------
+         SMART HANDLER FAILURE
+      ----------------------------------------------------- */
 
-        if (
-          isInputError
-        ) {
+      if (
+        !response.ok
+      ) {
 
-          await supabase
-            .from(
-              "research_jobs"
-            )
-            .update({
-              status:
-                "failed",
+        const errorMessage =
+          typeof responseData === "object" &&
+          responseData !== null &&
+          "error" in responseData
+            ? String(
+                (responseData as any)
+                  .error
+              )
+            : `smart-handler HTTP ${response.status}`;
 
-              error:
-                typeof responseData ===
-                "object" &&
-                responseData !== null &&
-                "error" in responseData
-                  ? String(
-                      (responseData as {
-                        error?: unknown
-                      }).error ??
-                      "smart-handler input error"
-                    )
-                  : "smart-handler input error"
-            })
-            .eq(
-              "id",
-              job.id
-            );
 
-        } else {
+        /*
+         * Worker側で失敗状態を保存。
+         */
 
-          // --------------------------------------------------
-          // 一時的エラーなら queued に戻す
-          // --------------------------------------------------
+        await supabase
+          .from(
+            "research_jobs"
+          )
+          .update({
 
-          await supabase
-            .from(
-              "research_jobs"
-            )
-            .update({
-              status:
-                "queued",
+            status:
+              "failed",
 
-              error:
-                `smart-handler returned HTTP ${response.status}`
-            })
-            .eq(
-              "id",
-              job.id
-            );
+            finished_at:
+              new Date().toISOString(),
 
-        }
+            error_message:
+              errorMessage
+
+          })
+          .eq(
+            "id",
+            job.id
+          );
+
 
         return json(
           {
+
             ok: false,
 
-            processed:
-              false,
+            processed: false,
 
             job_id:
               job.id,
@@ -684,36 +695,97 @@ Deno.serve(
 
             smart_handler_response:
               responseData
+
           },
           502
         );
+
       }
 
-      // ======================================================
-      // Success
-      // ======================================================
 
-      console.log(
-        "smart-handler succeeded:",
-        job.id
-      );
+      /* -----------------------------------------------------
+         SUCCESS
+      ----------------------------------------------------- */
 
-      // ======================================================
-      // Return
-      // ======================================================
+      /*
+       * smart-handlerが
+       * job.statusをcompletedにしている可能性がある。
+       *
+       * その場合は上書きしない。
+       *
+       * まだrunningならcompletedにする。
+       */
+
+      const {
+        data: latestJob
+      } =
+        await supabase
+          .from(
+            "research_jobs"
+          )
+          .select(
+            "status"
+          )
+          .eq(
+            "id",
+            job.id
+          )
+          .maybeSingle();
+
+
+      if (
+        latestJob?.status ===
+        "running"
+      ) {
+
+        await supabase
+          .from(
+            "research_jobs"
+          )
+          .update({
+
+            status:
+              "completed",
+
+            finished_at:
+              new Date().toISOString(),
+
+            error_message:
+              null,
+
+            result:
+              responseData
+
+          })
+          .eq(
+            "id",
+            job.id
+          );
+
+      }
+
+
+      /* -----------------------------------------------------
+         RETURN
+      ----------------------------------------------------- */
 
       return json({
+
         ok: true,
 
-        processed:
-          true,
+        processed: true,
 
         job_id:
           job.id,
 
+        theme:
+          theme,
+
         smart_handler:
           responseData
+
       });
+
 
     } catch (error) {
 
@@ -722,14 +794,19 @@ Deno.serve(
         error
       );
 
+
       return json(
         {
+
           ok: false,
+
+          processed: false,
 
           error:
             error instanceof Error
               ? error.message
               : String(error)
+
         },
         500
       );
