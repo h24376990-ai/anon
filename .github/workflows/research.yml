@@ -1,76 +1,199 @@
-name: Research AI Lab Worker
+name: Research AI Lab
 
 on:
+  workflow_dispatch:
 
-  # 5分ごとにworkerを起動
   schedule:
     - cron: "*/5 * * * *"
 
-  # GitHubから手動実行可能
-  workflow_dispatch:
-
-  # push時にも確認できる
-  push:
-    branches:
-      - main
-
-
 jobs:
 
-  research-worker:
+  # ==========================================================
+  # 1. Edge Functionsをデプロイ
+  # ==========================================================
+
+  deploy-functions:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 10
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+
+      - name: Check CLI
+        run: |
+          supabase --version
+
+
+      - name: Check secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "ERROR: SUPABASE_ACCESS_TOKEN is missing"
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_PROJECT_REF" ]; then
+            echo "ERROR: SUPABASE_PROJECT_REF is missing"
+            exit 1
+          fi
+
+          echo "SUPABASE_ACCESS_TOKEN: configured"
+          echo "SUPABASE_PROJECT_REF: $SUPABASE_PROJECT_REF"
+
+
+      - name: Link Supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+
+          supabase link \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+
+      # --------------------------------------------------------
+      # kick-worker
+      # --------------------------------------------------------
+
+      - name: Deploy kick-worker
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+
+          echo "======================================"
+          echo "Deploying kick-worker"
+          echo "======================================"
+
+          if [ ! -f "supabase/functions/kick-worker/index.ts" ]; then
+            echo "ERROR: kick-worker/index.ts does not exist"
+            exit 1
+          fi
+
+          supabase functions deploy kick-worker \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+
+      # --------------------------------------------------------
+      # smart-handler
+      # --------------------------------------------------------
+
+      - name: Deploy smart-handler
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+
+          echo "======================================"
+          echo "Deploying smart-handler"
+          echo "======================================"
+
+          if [ ! -f "supabase/functions/smart-handler/index.ts" ]; then
+            echo "ERROR: smart-handler/index.ts does not exist"
+            exit 1
+          fi
+
+          supabase functions deploy smart-handler \
+            --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" \
+            --no-verify-jwt
+
+
+      - name: Deployment finished
+        run: |
+
+          echo "======================================"
+          echo "Supabase Functions Deployment Complete"
+          echo "======================================"
+          echo "kick-worker: deployed"
+          echo "smart-handler: deployed"
+          echo "======================================"
+
+
+  # ==========================================================
+  # 2. Worker実行
+  # ==========================================================
+
+  run-worker:
+
+    needs:
+      - deploy-functions
+
+    runs-on: ubuntu-latest
 
     steps:
 
-      # =====================================================
-      # START
-      # =====================================================
-
-      - name: Start Research AI Worker
-        env:
-
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
-
+      - name: Start Worker
         run: |
 
           echo "======================================"
           echo "Research AI Lab Worker"
           echo "======================================"
-
           echo "Starting kick-worker..."
 
+
+      - name: Call kick-worker
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+
+          set -e
+
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "ERROR: SUPABASE_URL is missing"
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "ERROR: SUPABASE_ANON_KEY is missing"
+            exit 1
+          fi
+
+
+          echo "======================================"
+          echo "Calling kick-worker"
+          echo "======================================"
+
+
+          RESPONSE_FILE="worker_response.json"
+
+
           HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output worker-response.json \
-            --write-out "%{http_code}" \
-            --max-time 120 \
+            -sS \
+            -o "$RESPONSE_FILE" \
+            -w "%{http_code}" \
             -X POST \
             "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
             -H "Content-Type: application/json" \
-            -H "x-worker-secret: ${WORKER_SECRET}" \
-            -d '{"source":"github-actions"}')
+            --data '{}'
+          )
+
 
           echo ""
           echo "HTTP STATUS: ${HTTP_STATUS}"
           echo ""
 
-          cat worker-response.json
+
+          cat "$RESPONSE_FILE"
+
 
           echo ""
+          echo "======================================"
 
-          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
 
-            echo "Worker request succeeded."
-
-          else
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
 
             echo "Worker request failed."
 
@@ -79,98 +202,13 @@ jobs:
           fi
 
 
-      # =====================================================
-      # SECOND KICK
-      # =====================================================
-      #
-      # 1回目で1ジョブ処理。
-      # 2回目も呼ぶことで、queuedが複数ある場合に
-      # 連続処理できる。
-      #
+          echo "Worker request succeeded."
 
-      - name: Continue Worker
-        env:
+          echo "======================================"
 
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
-          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
-
+      - name: Worker finished
+        if: always()
         run: |
 
-          echo "Starting second worker pass..."
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output worker-response-2.json \
-            --write-out "%{http_code}" \
-            --max-time 120 \
-            -X POST \
-            "${SUPABASE_URL}/functions/v1/kick-worker" \
-            -H "Content-Type: application/json" \
-            -H "x-worker-secret: ${WORKER_SECRET}" \
-            -d '{"source":"github-actions","pass":2}')
-
-          echo ""
-          echo "HTTP STATUS: ${HTTP_STATUS}"
-          echo ""
-
-          cat worker-response-2.json
-
-          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
-
-            echo "Second worker pass succeeded."
-
-          else
-
-            echo "Second worker pass failed."
-
-            exit 1
-
-          fi
-
-
-      # =====================================================
-      # THIRD KICK
-      # =====================================================
-
-      - name: Final Worker Pass
-        env:
-
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-
-          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
-
-        run: |
-
-          echo "Starting final worker pass..."
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output worker-response-3.json \
-            --write-out "%{http_code}" \
-            --max-time 120 \
-            -X POST \
-            "${SUPABASE_URL}/functions/v1/kick-worker" \
-            -H "Content-Type: application/json" \
-            -H "x-worker-secret: ${WORKER_SECRET}" \
-            -d '{"source":"github-actions","pass":3}')
-
-          echo ""
-          echo "HTTP STATUS: ${HTTP_STATUS}"
-          echo ""
-
-          cat worker-response-3.json
-
-          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
-
-            echo "Final worker pass succeeded."
-
-          else
-
-            echo "Final worker pass failed."
-
-            exit 1
-
-          fi
+          echo "Research AI Lab worker finished."
