@@ -1,0 +1,176 @@
+name: Research AI Lab Worker
+
+on:
+
+  # 5分ごとにworkerを起動
+  schedule:
+    - cron: "*/5 * * * *"
+
+  # GitHubから手動実行可能
+  workflow_dispatch:
+
+  # push時にも確認できる
+  push:
+    branches:
+      - main
+
+
+jobs:
+
+  research-worker:
+
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 10
+
+    steps:
+
+      # =====================================================
+      # START
+      # =====================================================
+
+      - name: Start Research AI Worker
+        env:
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+        run: |
+
+          echo "======================================"
+          echo "Research AI Lab Worker"
+          echo "======================================"
+
+          echo "Starting kick-worker..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output worker-response.json \
+            --write-out "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions"}')
+
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
+
+          cat worker-response.json
+
+          echo ""
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+
+            echo "Worker request succeeded."
+
+          else
+
+            echo "Worker request failed."
+
+            exit 1
+
+          fi
+
+
+      # =====================================================
+      # SECOND KICK
+      # =====================================================
+      #
+      # 1回目で1ジョブ処理。
+      # 2回目も呼ぶことで、queuedが複数ある場合に
+      # 連続処理できる。
+      #
+
+      - name: Continue Worker
+        env:
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+        run: |
+
+          echo "Starting second worker pass..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output worker-response-2.json \
+            --write-out "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions","pass":2}')
+
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
+
+          cat worker-response-2.json
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+
+            echo "Second worker pass succeeded."
+
+          else
+
+            echo "Second worker pass failed."
+
+            exit 1
+
+          fi
+
+
+      # =====================================================
+      # THIRD KICK
+      # =====================================================
+
+      - name: Final Worker Pass
+        env:
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+        run: |
+
+          echo "Starting final worker pass..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output worker-response-3.json \
+            --write-out "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions","pass":3}')
+
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
+
+          cat worker-response-3.json
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+
+            echo "Final worker pass succeeded."
+
+          else
+
+            echo "Final worker pass failed."
+
+            exit 1
+
+          fi
