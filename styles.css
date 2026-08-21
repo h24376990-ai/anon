@@ -1,227 +1,609 @@
 /* =========================================================
    Research AI Lab
-   app.js — Full Integrated Version
+   styles.css — FUTURE DARK UI
    ========================================================= */
 
-"use strict";
+:root {
+  --bg: #050811;
+  --bg-2: #080d18;
+  --panel: rgba(10, 18, 32, 0.86);
+  --panel-strong: rgba(12, 22, 40, 0.96);
 
-/* =========================================================
-   SUPABASE
-========================================================= */
+  --line: rgba(96, 183, 255, 0.16);
+  --line-strong: rgba(77, 196, 255, 0.38);
 
-const SUPABASE_URL =
-  "https://beadajbimgpephqszbfy.supabase.co";
+  --text: #edf7ff;
+  --text-soft: #a9bfd2;
+  --text-dim: #6f879b;
 
-const SUPABASE_PUBLISHABLE_KEY =
-  "sb_publishable_s5kiFZVJ9jXyOgS-j2pS-g_7Kj1IeC8";
+  --cyan: #4ddcff;
+  --blue: #4c8dff;
+  --purple: #8b6cff;
+  --green: #48e0a4;
+  --yellow: #ffd76a;
+  --red: #ff5f78;
 
-const PROJECT_ID =
-  "ab429192-27d2-47e4-9ad7-08b639f45120";
+  --shadow:
+    0 0 30px rgba(0, 160, 255, 0.08);
 
-/*
- * 実際にデプロイしたEdge Function名。
- *
- * researchを直接呼ぶのではなく、
- * research_jobsへ登録
- *        ↓
- * kick-worker
- *        ↓
- * GitHub Actions / Worker
- *        ↓
- * research_jobs更新
- */
-const KICK_WORKER_FUNCTION =
-  "kick-worker";
+  --glow:
+    0 0 18px rgba(77, 220, 255, 0.18);
 
+  --radius: 16px;
 
-const sb =
-  window.supabase.createClient(
-    SUPABASE_URL,
-    SUPABASE_PUBLISHABLE_KEY,
-    {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false
-      }
-    }
-  );
+  --nav-height: 78px;
+}
 
 
 /* =========================================================
-   STATE
+   RESET
 ========================================================= */
 
-let activeJobId =
-  localStorage.getItem(
-    "active_research_job"
-  ) || null;
+* {
+  box-sizing: border-box;
+}
 
-let pollTimer = null;
+html {
+  width: 100%;
+  min-height: 100%;
+  background: var(--bg);
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
 
-let lastResults = [];
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
 
-let selectedResult = null;
-
-let researchContext = [];
-
-let isStartingResearch = false;
-
-let isKickingWorker = false;
-
-
-/* =========================================================
-   CONSTANTS
-========================================================= */
-
-const MAX_VISIBLE_RESULTS = 100;
-
-const CONTEXT_RESULT_LIMIT = 50;
-
-const POLL_INTERVAL = 3000;
-
-const JOB_KICK_TIMEOUT = 10000;
-
-const TERMINAL_STATUSES = [
-  "completed",
-  "failed",
-  "cancelled"
-];
-
-const POSITIVE_EVALUATIONS = [
-  "⭕",
-  "⭕️",
-  "○",
-  "〇",
-  "positive",
-  "promising",
-  "supported",
-  "partially_verified"
-];
-
-
-/* =========================================================
-   DOM
-========================================================= */
-
-const $ = id =>
-  document.getElementById(id);
-
-
-/* =========================================================
-   ESCAPE
-========================================================= */
-
-function esc(value) {
-
-  return String(value ?? "")
-    .replace(
-      /[&<>\"']/g,
-      c => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        "\"": "&quot;",
-        "'": "&#039;"
-      })[c]
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(46, 121, 255, 0.10),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 85% 15%,
+      rgba(0, 221, 255, 0.07),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      rgba(92, 55, 255, 0.08),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      #050811 0%,
+      #070b14 45%,
+      #04070d 100%
     );
 
+  background-attachment: fixed;
+
+  color: var(--text);
+
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "SF Pro Text",
+    "Hiragino Sans",
+    "Yu Gothic",
+    "Meiryo",
+    sans-serif;
+
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+
+  padding-bottom:
+    calc(var(--nav-height) + 20px);
+
+  overflow-x: hidden;
 }
 
 
 /* =========================================================
-   DATE
+   FUTURE GRID BACKGROUND
 ========================================================= */
 
-function formatDate(value) {
+body::before {
+  content: "";
 
-  if (!value)
-    return "—";
+  position: fixed;
+  inset: 0;
 
-  const date =
-    new Date(value);
+  pointer-events: none;
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return "—";
-  }
+  opacity: 0.22;
 
-  return date.toLocaleString(
-    "ja-JP"
+  background-image:
+    linear-gradient(
+      rgba(77, 220, 255, 0.025) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(77, 220, 255, 0.025) 1px,
+      transparent 1px
+    );
+
+  background-size:
+    32px 32px;
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      black,
+      transparent 90%
+    );
+
+  z-index: 0;
+}
+
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050811;
+}
+
+::-webkit-scrollbar-thumb {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(77, 220, 255, 0.55),
+      rgba(76, 141, 255, 0.35)
+    );
+
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyan);
+}
+
+
+/* =========================================================
+   SELECTION
+========================================================= */
+
+::selection {
+  background: rgba(77, 220, 255, 0.25);
+  color: #ffffff;
+}
+
+
+/* =========================================================
+   APP CONTAINER
+========================================================= */
+
+#app,
+.app,
+main {
+  position: relative;
+  z-index: 1;
+}
+
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+header,
+.header,
+.top-header {
+  position: relative;
+
+  padding:
+    22px 20px
+    16px;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(6, 12, 24, 0.96),
+      rgba(6, 12, 24, 0.72)
+    );
+
+  border-bottom:
+    1px solid var(--line);
+
+  backdrop-filter:
+    blur(18px);
+
+  -webkit-backdrop-filter:
+    blur(18px);
+}
+
+
+/* =========================================================
+   TITLE
+========================================================= */
+
+h1,
+.logo,
+.site-title {
+  margin: 0;
+
+  color: #f3fbff;
+
+  font-size: clamp(
+    22px,
+    5vw,
+    32px
   );
 
+  font-weight: 700;
+
+  letter-spacing: 0.04em;
+
+  text-shadow:
+    0 0 18px
+    rgba(77, 220, 255, 0.25);
+}
+
+h1::first-letter {
+  color: var(--cyan);
+}
+
+h2,
+h3,
+h4 {
+  color: var(--text);
+}
+
+p {
+  color: var(--text-soft);
+  line-height: 1.7;
 }
 
 
 /* =========================================================
-   JSON
+   PAGE
 ========================================================= */
 
-function parseJson(value) {
+.page {
+  display: none;
 
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-    return {};
+  width: min(
+    1100px,
+    calc(100% - 24px)
+  );
+
+  margin:
+    0 auto;
+
+  padding:
+    18px 0 30px;
+}
+
+.page.active {
+  display: block;
+
+  animation:
+    pageIn
+    0.22s
+    ease-out;
+}
+
+@keyframes pageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
   }
 
-  if (
-    typeof value === "object"
-  ) {
-    return value;
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
-
-  try {
-
-    return JSON.parse(value);
-
-  } catch {
-
-    return {
-      text:
-        String(value)
-    };
-
-  }
-
 }
 
 
 /* =========================================================
-   RESULT SYMBOL
+   PANELS / CARDS
 ========================================================= */
 
-function resultSymbol(result) {
+.panel,
+.card,
+.info-card,
+.memory-stat,
+.job-panel,
+.research-panel,
+.graph-placeholder,
+.memo-card,
+.detail,
+.detail-panel {
+  position: relative;
 
-  const evaluation =
-    String(
-      result?.evaluation ??
-      ""
-    ).trim();
+  background:
+    linear-gradient(
+      145deg,
+      rgba(13, 24, 42, 0.94),
+      rgba(7, 14, 27, 0.90)
+    );
 
-  if (
-    POSITIVE_EVALUATIONS
-      .includes(
-        evaluation
-      )
-  ) {
-    return "⭕";
-  }
+  border:
+    1px solid var(--line);
 
-  if (
-    evaluation === "❌" ||
-    evaluation.toLowerCase() ===
-      "negative"
-  ) {
-    return "❌";
-  }
+  border-radius:
+    var(--radius);
 
-  return "△";
+  box-shadow:
+    var(--shadow);
 
+  backdrop-filter:
+    blur(16px);
+
+  -webkit-backdrop-filter:
+    blur(16px);
+}
+
+
+/* futuristic upper line */
+
+.panel::before,
+.card::before,
+.info-card::before,
+.job-panel::before,
+.research-panel::before,
+.detail::before {
+  content: "";
+
+  position: absolute;
+
+  left: 18px;
+  right: 18px;
+  top: 0;
+
+  height: 1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(77, 220, 255, 0.65),
+      transparent
+    );
+
+  opacity: 0.55;
+}
+
+
+/* =========================================================
+   BUTTON
+========================================================= */
+
+button {
+  font: inherit;
+}
+
+.button,
+button:not(.nav-button):not(.result-row) {
+  border: 1px solid var(--line-strong);
+
+  border-radius: 12px;
+
+  color: var(--text);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(24, 45, 70, 0.90),
+      rgba(10, 21, 38, 0.94)
+    );
+
+  padding:
+    11px 16px;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+
+  box-shadow:
+    inset 0 1px 0
+    rgba(255,255,255,0.04);
+}
+
+.button:hover,
+button:not(.nav-button):not(.result-row):hover {
+  border-color:
+    rgba(77, 220, 255, 0.7);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(25, 63, 91, 0.95),
+      rgba(11, 30, 49, 0.96)
+    );
+
+  box-shadow:
+    0 0 18px
+    rgba(77, 220, 255, 0.13);
+
+  transform:
+    translateY(-1px);
+}
+
+.button:active,
+button:not(.nav-button):not(.result-row):active {
+  transform:
+    translateY(0)
+    scale(0.98);
+}
+
+button:disabled,
+.button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* =========================================================
+   PRIMARY BUTTON
+========================================================= */
+
+.button.primary {
+  color: #00131a;
+
+  background:
+    linear-gradient(
+      135deg,
+      #5ce6ff,
+      #4c9dff
+    );
+
+  border-color:
+    rgba(129, 237, 255, 0.8);
+
+  font-weight: 700;
+
+  box-shadow:
+    0 0 22px
+    rgba(77, 220, 255, 0.18);
+}
+
+.button.primary:hover {
+  background:
+    linear-gradient(
+      135deg,
+      #8cecff,
+      #68adff
+    );
+
+  box-shadow:
+    0 0 30px
+    rgba(77, 220, 255, 0.30);
+}
+
+
+/* =========================================================
+   SECONDARY
+========================================================= */
+
+.button.secondary {
+  background:
+    rgba(19, 31, 50, 0.9);
+}
+
+
+/* =========================================================
+   DANGER
+========================================================= */
+
+.button.danger {
+  color: #ffb8c4;
+
+  border-color:
+    rgba(255, 95, 120, 0.30);
+
+  background:
+    rgba(75, 20, 34, 0.45);
+}
+
+.button.danger:hover {
+  border-color:
+    rgba(255, 95, 120, 0.65);
+
+  box-shadow:
+    0 0 20px
+    rgba(255, 95, 120, 0.12);
+}
+
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+input,
+textarea,
+select {
+  width: 100%;
+
+  color: var(--text);
+
+  background:
+    rgba(3, 9, 18, 0.86);
+
+  border:
+    1px solid rgba(91, 161, 207, 0.22);
+
+  border-radius:
+    12px;
+
+  outline: none;
+
+  padding:
+    13px 14px;
+
+  font-size: 15px;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+
+  caret-color:
+    var(--cyan);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color:
+    rgba(169, 191, 210, 0.42);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color:
+    rgba(77, 220, 255, 0.68);
+
+  background:
+    rgba(4, 14, 27, 0.96);
+
+  box-shadow:
+    0 0 0 3px
+    rgba(77, 220, 255, 0.07),
+    0 0 22px
+    rgba(77, 220, 255, 0.09);
+}
+
+textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+
+/* =========================================================
+   LABEL
+========================================================= */
+
+label {
+  display: block;
+
+  margin-bottom: 7px;
+
+  color:
+    #9cb8cc;
+
+  font-size: 12px;
+
+  font-weight: 600;
+
+  letter-spacing: 0.08em;
 }
 
 
@@ -229,23 +611,50 @@ function resultSymbol(result) {
    STATUS
 ========================================================= */
 
-function setStatus(
-  text,
-  type = ""
-) {
+.status {
+  min-height: 24px;
 
-  const box =
-    $("statusBox");
+  margin:
+    10px 0;
 
-  if (!box)
-    return;
+  padding:
+    9px 12px;
 
-  box.textContent =
-    text || "";
+  color:
+    var(--text-soft);
 
-  box.className =
-    `status ${type}`;
+  background:
+    rgba(10, 19, 32, 0.70);
 
+  border:
+    1px solid transparent;
+
+  border-radius:
+    10px;
+
+  font-size: 13px;
+}
+
+.status.success {
+  color:
+    #a9ffe0;
+
+  border-color:
+    rgba(72, 224, 164, 0.24);
+
+  background:
+    rgba(20, 72, 57, 0.22);
+}
+
+.status.error {
+  color:
+    #ffb4c0;
+
+  border-color:
+    rgba(255, 95, 120, 0.28);
+
+  background:
+    rgba(75, 20, 34, 0.25);
 }
 
 
@@ -253,599 +662,308 @@ function setStatus(
    CONNECTION
 ========================================================= */
 
-function setConnection(
-  ok,
-  text
-) {
+#connectionText {
+  color:
+    var(--text-soft);
 
-  const textNode =
-    $("connectionText");
+  font-size: 11px;
 
-  const dot =
-    $("connectionDot");
+  letter-spacing:
+    0.08em;
+}
 
-  if (textNode)
-    textNode.textContent =
-      text;
+.dot {
+  display: inline-block;
 
-  if (dot)
-    dot.className =
-      `dot ${ok ? "ok" : "bad"}`;
+  width: 8px;
+  height: 8px;
 
+  margin-right: 7px;
+
+  border-radius: 50%;
+
+  background:
+    var(--text-dim);
+}
+
+.dot.ok {
+  background:
+    var(--green);
+
+  box-shadow:
+    0 0 12px
+    rgba(72, 224, 164, 0.75);
+}
+
+.dot.bad {
+  background:
+    var(--red);
+
+  box-shadow:
+    0 0 12px
+    rgba(255, 95, 120, 0.6);
 }
 
 
 /* =========================================================
-   CONNECTION CHECK
+   RESEARCH AREA
 ========================================================= */
 
-async function checkConnection() {
+#questionInput {
+  min-height: 120px;
 
-  try {
+  font-size: 16px;
 
-    const response =
-      await Promise.race([
+  line-height: 1.7;
+}
 
-        sb
-          .from(
-            "research_results"
-          )
-          .select(
-            "id",
-            {
-              count: "exact",
-              head: true
-            }
-          )
-          .eq(
-            "project_id",
-            PROJECT_ID
-          ),
+#researchButton {
+  min-height: 46px;
 
-        new Promise(
-          (_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    "Supabase接続タイムアウト"
-                  )
-                ),
-              8000
-            )
-        )
-
-      ]);
-
-
-    if (response.error)
-      throw response.error;
-
-
-    setConnection(
-      true,
-      "SUPABASE ONLINE"
-    );
-
-    return true;
-
-  } catch (error) {
-
-    console.error(
-      "Supabase:",
-      error
-    );
-
-    setConnection(
-      false,
-      "SUPABASE ERROR"
-    );
-
-    return false;
-
-  }
-
+  min-width: 150px;
 }
 
 
 /* =========================================================
-   NAVIGATION
+   JOB PANEL
 ========================================================= */
 
-function showPage(page) {
+.job-panel,
+#jobPanel {
+  padding:
+    18px;
 
-  document
-    .querySelectorAll(".page")
-    .forEach(section => {
+  margin-top:
+    16px;
+}
 
-      section.classList.toggle(
-        "active",
-        section.id ===
-        `page-${page}`
-      );
-
-    });
-
-
-  document
-    .querySelectorAll(".nav-button")
-    .forEach(button => {
-
-      button.classList.toggle(
-        "active",
-        button.dataset.page ===
-        page
-      );
-
-    });
-
-
-  /*
-   * 重要:
-   *
-   * historyを開いた瞬間に
-   * 詳細を勝手に開かない。
-   *
-   * ユーザーが結果をクリックした時だけ
-   * renderDetail()する。
-   */
-
-  if (page === "history")
-    loadHistory();
-
-  if (page === "saved")
-    loadSaved();
-
-  if (page === "jobs")
-    loadJobs();
-
+.hidden {
+  display: none !important;
 }
 
 
 /* =========================================================
-   LOAD HISTORY
+   JOB INFO
 ========================================================= */
 
-async function loadHistory() {
+#jobId {
+  color:
+    var(--cyan);
 
-  const box =
-    $("historyList");
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
 
-  if (!box)
-    return;
+  font-size: 11px;
 
+  word-break: break-all;
+}
 
-  box.innerHTML =
-    `<div class="empty">
-      履歴を読み込んでいます...
-    </div>`;
+#jobStatus {
+  color:
+    var(--cyan);
 
+  font-weight:
+    700;
 
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_results"
-        )
-        .select(
-          [
-            "id",
-            "project_id",
-            "title",
-            "hypothesis",
-            "content",
-            "status",
-            "evaluation",
-            "confidence_level",
-            "is_human_saved",
-            "created_at",
-            "updated_at"
-          ].join(",")
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(
-          MAX_VISIBLE_RESULTS
-        );
+  letter-spacing:
+    0.08em;
+}
 
 
-    if (error)
-      throw error;
+/* =========================================================
+   PROGRESS
+========================================================= */
 
+.progress,
+.progress-bar {
+  position: relative;
 
-    lastResults =
-      data || [];
+  width: 100%;
 
+  height: 8px;
 
-    const count =
-      $("historyCount");
+  margin:
+    12px 0;
 
-    if (count)
-      count.textContent =
-        `${lastResults.length}件`;
+  overflow: hidden;
 
+  border-radius:
+    999px;
 
-    /*
-     * ここではrenderDetailしない。
-     *
-     * 「履歴を押す」
-     *       ↓
-     * 「結果をクリック」
-     *       ↓
-     * 「詳細を表示」
-     */
-    renderResults(
-      box,
-      lastResults
+  background:
+    rgba(87, 132, 165, 0.12);
+}
+
+#progressValue {
+  height: 100%;
+
+  width: 0;
+
+  border-radius:
+    inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      #4ddcff,
+      #4c8dff,
+      #8b6cff
     );
 
+  box-shadow:
+    0 0 18px
+    rgba(77, 220, 255, 0.4);
 
-  } catch (error) {
+  transition:
+    width 0.5s ease;
+}
 
-    console.error(
-      "History:",
-      error
+#progressText,
+#progressPercent {
+  color:
+    var(--text-soft);
+
+  font-size:
+    12px;
+}
+
+
+/* =========================================================
+   RESULT LIST
+========================================================= */
+
+#historyList,
+#savedList,
+#jobsList,
+#routesList,
+#memoList,
+#memoryList {
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  gap:
+    10px;
+}
+
+
+/* =========================================================
+   RESULT ROW
+========================================================= */
+
+.result-row {
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  gap:
+    12px;
+
+  width:
+    100%;
+
+  min-height:
+    70px;
+
+  padding:
+    12px 14px;
+
+  text-align:
+    left;
+
+  color:
+    var(--text);
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(13, 25, 43, 0.88),
+      rgba(7, 14, 26, 0.92)
     );
 
-    box.innerHTML =
-      `<div class="error">
-        履歴取得失敗<br>
-        ${esc(
-          error.message
-        )}
-      </div>`;
+  border:
+    1px solid var(--line);
 
-  }
+  border-radius:
+    14px;
 
+  cursor:
+    pointer;
+
+  transition:
+    0.18s ease;
 }
 
+.result-row:hover {
+  border-color:
+    rgba(77, 220, 255, 0.46);
 
-/* =========================================================
-   SAVED RESULTS
-========================================================= */
+  transform:
+    translateY(-1px);
 
-async function loadSaved() {
-
-  const box =
-    $("savedList");
-
-  if (!box)
-    return;
-
-
-  box.innerHTML =
-    `<div class="empty">
-      読み込み中...
-    </div>`;
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_results"
-        )
-        .select(
-          [
-            "id",
-            "project_id",
-            "title",
-            "hypothesis",
-            "content",
-            "status",
-            "evaluation",
-            "confidence_level",
-            "is_human_saved",
-            "created_at",
-            "updated_at"
-          ].join(",")
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .eq(
-          "is_human_saved",
-          true
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        );
-
-
-    if (error)
-      throw error;
-
-
-    renderResults(
-      box,
-      data || []
-    );
-
-
-  } catch (error) {
-
-    box.innerHTML =
-      `<div class="error">
-        保存結果取得失敗<br>
-        ${esc(
-          error.message
-        )}
-      </div>`;
-
-  }
-
+  box-shadow:
+    0 0 20px
+    rgba(77, 220, 255, 0.08);
 }
 
-
-/* =========================================================
-   LOAD JOBS
-========================================================= */
-
-async function loadJobs() {
-
-  const box =
-    $("jobsList");
-
-  if (!box)
-    return;
-
-
-  box.innerHTML =
-    `<div class="empty">
-      ジョブを読み込んでいます...
-    </div>`;
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .select(
-          [
-            "id",
-            "project_id",
-            "job_type",
-            "status",
-            "priority",
-            "payload",
-            "result",
-            "error_message",
-            "started_at",
-            "finished_at",
-            "created_at"
-          ].join(",")
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(100);
-
-
-    if (error)
-      throw error;
-
-
-    if (!data?.length) {
-
-      box.innerHTML =
-        `<div class="empty">
-          研究ジョブはありません。
-        </div>`;
-
-      return;
-
-    }
-
-
-    box.innerHTML =
-      data.map(job => {
-
-        const status =
-          job.status ||
-          "unknown";
-
-
-        const payload =
-          parseJson(
-            job.payload
-          );
-
-
-        const theme =
-          payload.theme ||
-          job.job_type ||
-          "Research";
-
-
-        return `
-          <div class="job-row">
-
-            <div>
-
-              <b>
-                ${esc(theme)}
-              </b>
-
-              <small>
-                ${formatDate(
-                  job.created_at
-                )}
-              </small>
-
-            </div>
-
-            <span
-              class="badge ${esc(status)}"
-            >
-              ${esc(status)}
-            </span>
-
-          </div>
-        `;
-
-      }).join("");
-
-
-  } catch (error) {
-
-    box.innerHTML =
-      `<div class="error">
-        ジョブ取得失敗<br>
-        ${esc(
-          error.message
-        )}
-      </div>`;
-
-  }
-
+.result-row:active {
+  transform:
+    scale(0.99);
 }
 
+.symbol,
+.big-symbol {
+  flex:
+    0 0 auto;
 
-/* =========================================================
-   RESULTS
-========================================================= */
+  font-size:
+    22px;
+}
 
-function renderResults(
-  box,
-  rows
-) {
+.result-main {
+  min-width:
+    0;
 
-  if (!rows.length) {
+  flex:
+    1;
+}
 
-    box.innerHTML =
-      `<div class="empty">
-        まだ研究結果がありません。
-      </div>`;
+.result-main b {
+  display:
+    block;
 
-    return;
+  overflow:
+    hidden;
 
-  }
+  color:
+    #eaf7ff;
 
+  white-space:
+    nowrap;
 
-  box.innerHTML =
-    rows.map(result => `
+  text-overflow:
+    ellipsis;
+}
 
-      <button
-        class="result-row"
-        data-id="${esc(
-          result.id
-        )}"
-        type="button"
-      >
+.result-main small {
+  display:
+    block;
 
-        <span class="symbol">
-          ${resultSymbol(result)}
-        </span>
+  margin-top:
+    5px;
 
-        <span class="result-main">
+  color:
+    var(--text-dim);
 
-          <b>
-            ${esc(
-              result.title ||
-              "無題"
-            )}
-          </b>
-
-          <small>
-
-            ${formatDate(
-              result.created_at
-            )}
-
-            ・信頼度
-
-            ${Number(
-              result.confidence_level ?? 0
-            )}/5
-
-          </small>
-
-        </span>
-
-
-        <span>
-
-          ${
-            result.is_human_saved
-              ? "★"
-              : ""
-          }
-
-        </span>
-
-      </button>
-
-    `).join("");
-
-
-  box
-    .querySelectorAll(
-      ".result-row"
-    )
-    .forEach(element => {
-
-      element.addEventListener(
-        "click",
-        () => {
-
-          const result =
-            rows.find(
-              item =>
-                item.id ===
-                element.dataset.id
-            );
-
-
-          if (!result)
-            return;
-
-
-          selectedResult =
-            result;
-
-
-          renderDetail(
-            result
-          );
-
-        }
-      );
-
-    });
-
+  font-size:
+    11px;
 }
 
 
@@ -853,1947 +971,1121 @@ function renderResults(
    DETAIL
 ========================================================= */
 
-function renderDetail(
-  result
-) {
+#detail {
+  margin-top:
+    16px;
 
-  const detail =
-    $("detail");
+  padding:
+    18px;
 
-  if (!detail)
-    return;
-
-
-  const content =
-    parseJson(
-      result.content
+  background:
+    linear-gradient(
+      145deg,
+      rgba(12, 24, 42, 0.95),
+      rgba(6, 12, 23, 0.95)
     );
 
+  border:
+    1px solid var(--line);
 
-  detail.innerHTML = `
+  border-radius:
+    var(--radius);
 
-    <div class="detail-head">
+  box-shadow:
+    var(--shadow);
+}
 
-      <span class="big-symbol">
-        ${resultSymbol(result)}
-      </span>
+.detail-head {
+  display:
+    flex;
 
-      <div>
+  align-items:
+    center;
 
-        <h3>
-          ${esc(
-            result.title ||
-            "無題"
-          )}
-        </h3>
+  gap:
+    12px;
 
-        <small>
-          ${formatDate(
-            result.created_at
-          )}
-        </small>
+  margin-bottom:
+    15px;
+}
 
-      </div>
+.detail-head h3 {
+  margin:
+    0 0 5px;
+}
 
-    </div>
+.detail-head small {
+  color:
+    var(--text-dim);
+}
 
+.chips {
+  display:
+    flex;
 
-    <div class="chips">
+  flex-wrap:
+    wrap;
 
-      <span>
-        評価:
-        ${esc(
-          result.evaluation ||
-          "△"
-        )}
-      </span>
+  gap:
+    7px;
 
-      <span>
-        信頼度:
-        ${Number(
-          result.confidence_level ?? 0
-        )}/5
-      </span>
+  margin-bottom:
+    18px;
+}
 
-      <span>
-        状態:
-        ${esc(
-          result.status ||
-          "pending"
-        )}
-      </span>
+.chips span {
+  padding:
+    6px 9px;
 
-    </div>
+  color:
+    #a9d3e9;
 
+  background:
+    rgba(44, 94, 130, 0.15);
 
-    <section>
+  border:
+    1px solid
+    rgba(77, 220, 255, 0.14);
 
-      <label>
-        仮説
-      </label>
+  border-radius:
+    999px;
 
-      <p>
-        ${esc(
-          result.hypothesis ||
-          "—"
-        )}
-      </p>
+  font-size:
+    11px;
+}
 
-    </section>
+.detail section {
+  margin-top:
+    18px;
+}
 
+.detail pre {
+  max-width:
+    100%;
 
-    <section>
+  overflow:
+    auto;
 
-      <label>
-        研究内容
-      </label>
+  padding:
+    14px;
 
-      <pre>${esc(
-        JSON.stringify(
-          content,
-          null,
-          2
-        )
-      )}</pre>
+  color:
+    #b9e9ff;
 
-    </section>
+  background:
+    rgba(1, 6, 13, 0.8);
 
+  border:
+    1px solid
+    rgba(77, 220, 255, 0.10);
 
-    <div class="detail-actions">
+  border-radius:
+    12px;
 
-      <button
-        id="saveDetail"
-        class="button primary"
-        type="button"
-      >
-        ${
-          result.is_human_saved
-            ? "★ 保存解除"
-            : "★ 保存"
-        }
-      </button>
+  font-size:
+    12px;
 
+  line-height:
+    1.6;
+}
 
-      <button
-        id="reverifyDetail"
-        class="button secondary"
-        type="button"
-      >
-        🔄 再検証
-      </button>
+.detail-actions {
+  display:
+    flex;
 
-    </div>
+  flex-wrap:
+    wrap;
 
-  `;
+  gap:
+    9px;
 
-
-  $("saveDetail")
-    ?.addEventListener(
-      "click",
-      () =>
-        toggleSave(result)
-    );
-
-
-  $("reverifyDetail")
-    ?.addEventListener(
-      "click",
-      () =>
-        requestReverification(
-          result
-        )
-    );
-
+  margin-top:
+    20px;
 }
 
 
 /* =========================================================
-   SAVE
+   JOB ROW
 ========================================================= */
 
-async function toggleSave(
-  result
-) {
+.job-row {
+  display:
+    flex;
 
-  try {
+  align-items:
+    center;
 
-    const newValue =
-      !result.is_human_saved;
+  justify-content:
+    space-between;
+
+  gap:
+    12px;
+
+  padding:
+    14px;
+
+  background:
+    rgba(10, 20, 35, 0.78);
+
+  border:
+    1px solid var(--line);
+
+  border-radius:
+    13px;
+}
+
+.job-row b {
+  display:
+    block;
+
+  color:
+    var(--text);
+}
+
+.job-row small {
+  display:
+    block;
+
+  margin-top:
+    4px;
+
+  color:
+    var(--text-dim);
+
+  font-size:
+    11px;
+}
 
 
-    const {
-      error
-    } =
-      await sb
-        .from(
-          "research_results"
-        )
-        .update({
-          is_human_saved:
-            newValue
-        })
-        .eq(
-          "id",
-          result.id
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        );
+/* =========================================================
+   BADGES
+========================================================= */
+
+.badge {
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  padding:
+    5px 8px;
+
+  border:
+    1px solid var(--line);
+
+  border-radius:
+    999px;
+
+  color:
+    var(--text-soft);
+
+  font-size:
+    10px;
+
+  font-weight:
+    700;
+
+  letter-spacing:
+    0.05em;
+}
+
+.badge.queued {
+  color:
+    #b4c8ff;
+
+  border-color:
+    rgba(76, 141, 255, 0.30);
+}
+
+.badge.running {
+  color:
+    #7feaff;
+
+  border-color:
+    rgba(77, 220, 255, 0.35);
+
+  box-shadow:
+    0 0 12px
+    rgba(77, 220, 255, 0.08);
+}
+
+.badge.completed {
+  color:
+    #91f7c8;
+
+  border-color:
+    rgba(72, 224, 164, 0.30);
+}
+
+.badge.failed {
+  color:
+    #ff9aaa;
+
+  border-color:
+    rgba(255, 95, 120, 0.30);
+}
+
+.badge.cancelled {
+  color:
+    #c1c9d0;
+}
 
 
-    if (error)
-      throw error;
+/* =========================================================
+   MEMORY
+========================================================= */
+
+.memory-stat {
+  padding:
+    20px;
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  gap:
+    4px;
+}
+
+.memory-stat strong {
+  color:
+    var(--cyan);
+
+  font-size:
+    34px;
+
+  text-shadow:
+    0 0 18px
+    rgba(77, 220, 255, 0.24);
+}
+
+.memory-stat span {
+  color:
+    var(--text-soft);
+
+  font-size:
+    12px;
+}
 
 
-    result.is_human_saved =
-      newValue;
+/* =========================================================
+   INFO CARD
+========================================================= */
+
+.info-card {
+  padding:
+    18px;
+}
+
+.info-card h3 {
+  margin-top:
+    0;
+}
 
 
-    setStatus(
-      newValue
-        ? "研究結果を保存しました。"
-        : "保存を解除しました。",
-      "success"
+/* =========================================================
+   GRAPH / ROUTES
+========================================================= */
+
+.graph-placeholder {
+  min-height:
+    300px;
+
+  padding:
+    20px;
+
+  overflow:
+    hidden;
+}
+
+.graph-node {
+  padding:
+    12px 14px;
+
+  margin:
+    8px auto;
+
+  width:
+    min(100%, 600px);
+
+  color:
+    #dff7ff;
+
+  background:
+    rgba(13, 34, 54, 0.78);
+
+  border:
+    1px solid
+    rgba(77, 220, 255, 0.20);
+
+  border-radius:
+    12px;
+
+  box-shadow:
+    inset 0 0 20px
+    rgba(77, 220, 255, 0.025);
+}
+
+.graph-node.main {
+  width:
+    min(100%, 300px);
+
+  text-align:
+    center;
+
+  color:
+    #00131a;
+
+  background:
+    linear-gradient(
+      135deg,
+      #5ce6ff,
+      #4c8dff
     );
 
+  border:
+    none;
 
-    await loadHistory();
+  font-weight:
+    800;
+
+  box-shadow:
+    0 0 25px
+    rgba(77, 220, 255, 0.20);
+}
+
+.graph-node span {
+  display:
+    inline-flex;
+
+  justify-content:
+    center;
+
+  align-items:
+    center;
+
+  width:
+    24px;
+
+  height:
+    24px;
+
+  margin-right:
+    8px;
+
+  border-radius:
+    50%;
+
+  color:
+    var(--cyan);
+
+  background:
+    rgba(77, 220, 255, 0.08);
+
+  font-size:
+    10px;
+}
+
+.graph-node small {
+  float:
+    right;
+}
+
+.graph-line {
+  width:
+    1px;
+
+  height:
+    18px;
+
+  margin:
+    0 auto;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(77, 220, 255, 0.45),
+      transparent
+    );
+}
 
 
-    if (
-      $("page-saved")
-        ?.classList
-        .contains("active")
-    ) {
-      await loadSaved();
+/* =========================================================
+   MEMOS
+========================================================= */
+
+.memo-card {
+  padding:
+    17px;
+}
+
+.memo-card h3 {
+  margin:
+    0 0 5px;
+}
+
+.memo-card small {
+  color:
+    var(--text-dim);
+
+  font-size:
+    11px;
+}
+
+.memo-card p {
+  white-space:
+    pre-wrap;
+
+  overflow-wrap:
+    anywhere;
+}
+
+
+/* =========================================================
+   EMPTY
+========================================================= */
+
+.empty {
+  padding:
+    35px 20px;
+
+  text-align:
+    center;
+
+  color:
+    var(--text-dim);
+
+  background:
+    rgba(7, 14, 26, 0.55);
+
+  border:
+    1px dashed
+    rgba(77, 220, 255, 0.14);
+
+  border-radius:
+    14px;
+
+  font-size:
+    13px;
+}
+
+
+/* =========================================================
+   ERROR
+========================================================= */
+
+.error {
+  padding:
+    15px;
+
+  color:
+    #ffb2bf;
+
+  background:
+    rgba(74, 18, 32, 0.38);
+
+  border:
+    1px solid
+    rgba(255, 95, 120, 0.25);
+
+  border-radius:
+    12px;
+
+  line-height:
+    1.6;
+
+  overflow-wrap:
+    anywhere;
+}
+
+
+/* =========================================================
+   BOTTOM NAVIGATION
+   ★ 重要
+========================================================= */
+
+.nav,
+.bottom-nav,
+nav {
+  position:
+    fixed;
+
+  left:
+    0;
+
+  right:
+    0;
+
+  bottom:
+    0;
+
+  z-index:
+    1000;
+
+  height:
+    var(--nav-height);
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    8px 10px
+    calc(8px + env(safe-area-inset-bottom));
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(5, 10, 19, 0.76),
+      rgba(4, 8, 15, 0.97)
+    );
+
+  border-top:
+    1px solid
+    rgba(77, 220, 255, 0.16);
+
+  backdrop-filter:
+    blur(22px);
+
+  -webkit-backdrop-filter:
+    blur(22px);
+
+  box-shadow:
+    0 -12px 35px
+    rgba(0, 0, 0, 0.38);
+}
+
+
+/* top futuristic glow */
+
+.nav::before,
+.bottom-nav::before {
+  content: "";
+
+  position:
+    absolute;
+
+  left:
+    8%;
+
+  right:
+    8%;
+
+  top:
+    -1px;
+
+  height:
+    1px;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(77, 220, 255, 0.55),
+      transparent
+    );
+}
+
+
+/* =========================================================
+   NAV BUTTONS
+========================================================= */
+
+.nav-button {
+  position:
+    relative;
+
+  flex:
+    1;
+
+  max-width:
+    130px;
+
+  min-width:
+    54px;
+
+  height:
+    58px;
+
+  padding:
+    5px 4px;
+
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  gap:
+    4px;
+
+  color:
+    #6e879b;
+
+  background:
+    transparent;
+
+  border:
+    1px solid transparent;
+
+  border-radius:
+    13px;
+
+  cursor:
+    pointer;
+
+  transition:
+    0.18s ease;
+}
+
+.nav-button:hover {
+  color:
+    #bcefff;
+
+  background:
+    rgba(77, 220, 255, 0.045);
+}
+
+.nav-button.active {
+  color:
+    var(--cyan);
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(77, 220, 255, 0.11),
+      rgba(77, 220, 255, 0.035)
+    );
+
+  border-color:
+    rgba(77, 220, 255, 0.18);
+
+  box-shadow:
+    0 0 20px
+    rgba(77, 220, 255, 0.08);
+}
+
+.nav-button.active::after {
+  content: "";
+
+  position:
+    absolute;
+
+  bottom:
+    3px;
+
+  left:
+    30%;
+
+  right:
+    30%;
+
+  height:
+    2px;
+
+  border-radius:
+    999px;
+
+  background:
+    var(--cyan);
+
+  box-shadow:
+    0 0 10px
+    rgba(77, 220, 255, 0.8);
+}
+
+
+/* =========================================================
+   NAV ICON
+========================================================= */
+
+.nav-button .icon,
+.nav-button .nav-icon {
+  font-size:
+    20px;
+
+  line-height:
+    1;
+
+  filter:
+    drop-shadow(
+      0 0 5px
+      rgba(77, 220, 255, 0.08)
+    );
+}
+
+.nav-button span:last-child {
+  font-size:
+    9px;
+
+  line-height:
+    1.1;
+
+  white-space:
+    nowrap;
+}
+
+
+/* =========================================================
+   3D MODEL
+========================================================= */
+
+#page-model,
+#page-3d,
+#page-model3d {
+  min-height:
+    calc(
+      100vh -
+      var(--nav-height) -
+      40px
+    );
+}
+
+#modelContainer,
+#threeContainer,
+#canvasContainer,
+.model-container,
+.three-container {
+  position:
+    relative;
+
+  width:
+    100%;
+
+  min-height:
+    55vh;
+
+  overflow:
+    hidden;
+
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(21, 61, 95, 0.20),
+      rgba(3, 8, 16, 0.95) 70%
+    );
+
+  border:
+    1px solid
+    rgba(77, 220, 255, 0.17);
+
+  border-radius:
+    18px;
+
+  box-shadow:
+    inset 0 0 70px
+    rgba(77, 220, 255, 0.025),
+    0 0 30px
+    rgba(0, 0, 0, 0.25);
+}
+
+canvas {
+  display:
+    block;
+
+  max-width:
+    100%;
+}
+
+
+/* =========================================================
+   3D CONTROL UI
+========================================================= */
+
+.model-controls,
+.three-controls {
+  position:
+    absolute;
+
+  left:
+    12px;
+
+  right:
+    12px;
+
+  bottom:
+    12px;
+
+  z-index:
+    5;
+
+  display:
+    flex;
+
+  flex-wrap:
+    wrap;
+
+  gap:
+    7px;
+
+  pointer-events:
+    none;
+}
+
+.model-controls button,
+.three-controls button {
+  pointer-events:
+    auto;
+
+  padding:
+    8px 11px;
+
+  font-size:
+    11px;
+
+  background:
+    rgba(5, 12, 22, 0.82);
+
+  backdrop-filter:
+    blur(10px);
+}
+
+
+/* =========================================================
+   TABLE
+========================================================= */
+
+table {
+  width:
+    100%;
+
+  border-collapse:
+    collapse;
+
+  color:
+    var(--text-soft);
+}
+
+th,
+td {
+  padding:
+    10px;
+
+  border-bottom:
+    1px solid var(--line);
+
+  text-align:
+    left;
+}
+
+th {
+  color:
+    var(--cyan);
+
+  font-size:
+    11px;
+}
+
+
+/* =========================================================
+   LINKS
+========================================================= */
+
+a {
+  color:
+    var(--cyan);
+
+  text-decoration:
+    none;
+}
+
+a:hover {
+  text-decoration:
+    underline;
+}
+
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 700px) {
+
+  :root {
+    --nav-height: 76px;
+  }
+
+  body {
+    padding-bottom:
+      calc(
+        var(--nav-height) +
+        14px +
+        env(safe-area-inset-bottom)
+      );
+  }
+
+  .page {
+    width:
+      calc(100% - 16px);
+
+    padding-top:
+      12px;
+  }
+
+  header,
+  .header,
+  .top-header {
+    padding:
+      16px 13px 13px;
+  }
+
+  h1,
+  .logo,
+  .site-title {
+    font-size:
+      21px;
+  }
+
+  .panel,
+  .card,
+  .info-card,
+  .memory-stat,
+  .job-panel,
+  .research-panel,
+  .graph-placeholder,
+  .memo-card,
+  .detail {
+    border-radius:
+      14px;
+  }
+
+  .result-row {
+    min-height:
+      64px;
+
+    padding:
+      10px;
     }
 
+  .result-main b {
+    font-size:
+      13px;
+  }
 
-  } catch (error) {
+  .result-main small {
+    font-size:
+      10px;
+  }
 
-    setStatus(
-      `保存変更失敗: ${
-        error.message
-      }`,
-      "error"
-    );
+  .detail {
+    padding:
+      14px;
+  }
 
+  .detail-actions {
+    flex-direction:
+      column;
+  }
+
+  .detail-actions .button {
+    width:
+      100%;
+  }
+
+  .job-row {
+    align-items:
+      flex-start;
+  }
+
+  .nav-button {
+    height:
+      56px;
+
+    min-width:
+      48px;
+
+    padding:
+      4px 2px;
+  }
+
+  .nav-button .icon,
+  .nav-button .nav-icon {
+    font-size:
+      18px;
+  }
+
+  .nav-button span:last-child {
+    font-size:
+      8px;
+  }
+
+  .graph-placeholder {
+    padding:
+      12px;
+  }
+
+  #modelContainer,
+  #threeContainer,
+  #canvasContainer,
+  .model-container,
+  .three-container {
+    min-height:
+      60vh;
+  }
+}
+
+
+/* =========================================================
+   VERY SMALL DEVICES
+========================================================= */
+
+@media (max-width: 380px) {
+
+  .nav {
+    padding-left:
+      4px;
+
+    padding-right:
+      4px;
+  }
+
+  .nav-button {
+    min-width:
+      42px;
+  }
+
+  .nav-button span:last-child {
+    font-size:
+      7px;
   }
 
 }
 
 
 /* =========================================================
-   CREATE JOB
+   REDUCED MOTION
 ========================================================= */
 
-async function createResearchJob({
-  jobType = "research_cycle",
-  priority = 10,
-  payload = {}
-} = {}) {
+@media (prefers-reduced-motion: reduce) {
 
-  const {
-    data,
-    error
-  } =
-    await sb
-      .from(
-        "research_jobs"
-      )
-      .insert({
+  *,
+  *::before,
+  *::after {
+    animation-duration:
+      0.01ms !important;
 
-        project_id:
-          PROJECT_ID,
+    animation-iteration-count:
+      1 !important;
 
-        job_type:
-          jobType,
+    scroll-behavior:
+      auto !important;
 
-        status:
-          "queued",
-
-        priority,
-
-        payload
-
-      })
-      .select(
-        [
-          "id",
-          "project_id",
-          "job_type",
-          "status",
-          "priority",
-          "payload",
-          "result",
-          "error_message",
-          "started_at",
-          "finished_at",
-          "created_at"
-        ].join(",")
-      )
-      .single();
-
-
-  if (error)
-    throw error;
-
-
-  return data;
-
-}
-
-
-/* =========================================================
-   KICK WORKER
-========================================================= */
-
-/*
- * ここが今回の重要部分。
- *
- * 今まで:
- *
- * Browser
- *   ↓
- * INSERT
- *   ↓
- * queued
- *
- * で止まる可能性があった。
- *
- * 今回:
- *
- * Browser
- *   ↓
- * INSERT
- *   ↓
- * kick-worker
- *   ↓
- * Worker起動
- *   ↓
- * queued → running
- *
- * さらにGitHub Actionsの定期実行も
- * 保険として利用する。
- */
-
-async function kickWorker(
-  jobId
-) {
-
-  if (!jobId)
-    return null;
-
-
-  if (isKickingWorker)
-    return null;
-
-
-  isKickingWorker =
-    true;
-
-
-  try {
-
-    const responsePromise =
-      sb.functions.invoke(
-        KICK_WORKER_FUNCTION,
-        {
-          body: {
-
-            project_id:
-              PROJECT_ID,
-
-            job_id:
-              jobId
-
-          }
-        }
-      );
-
-
-    const timeoutPromise =
-      new Promise(
-        (_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(
-                  "kick-worker timeout"
-                )
-              ),
-            JOB_KICK_TIMEOUT
-          )
-      );
-
-
-    const {
-      data,
-      error
-    } =
-      await Promise.race([
-        responsePromise,
-        timeoutPromise
-      ]);
-
-
-    if (error)
-      throw error;
-
-
-    console.log(
-      "kick-worker:",
-      data
-    );
-
-
-    return data;
-
-  } catch (error) {
-
-    /*
-     * ここで研究そのものを失敗扱いにはしない。
-     *
-     * GitHub Actionsがqueuedを拾う
-     * fallbackとして存在するため。
-     */
-
-    console.warn(
-      "kick-worker failed:",
-      error
-    );
-
-
-    return null;
-
-  } finally {
-
-    isKickingWorker =
-      false;
-
+    transition-duration:
+      0.01ms !important;
   }
-
-}
-
-
-/* =========================================================
-   START RESEARCH
-========================================================= */
-
-async function startResearch() {
-
-  if (isStartingResearch)
-    return;
-
-
-  const input =
-    $("questionInput");
-
-
-  if (!input)
-    return;
-
-
-  const theme =
-    input.value.trim();
-
-
-  if (!theme) {
-
-    setStatus(
-      "研究テーマを入力してください。",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  isStartingResearch =
-    true;
-
-
-  if ($("researchButton"))
-    $("researchButton")
-      .disabled = true;
-
-  if ($("stopButton"))
-    $("stopButton")
-      .disabled = false;
-
-
-  setStatus(
-    "研究ジョブを登録しています..."
-  );
-
-
-  try {
-
-    const context =
-      await getResearchContext(
-        theme
-      );
-
-
-    /*
-     * UI側から研究モードを取得。
-     *
-     * HTML側に
-     * researchMode
-     * があれば利用。
-     */
-    const modeElement =
-      $("researchMode");
-
-
-    const mode =
-      modeElement?.value ||
-      "mathematics";
-
-
-    const physicsEnabled =
-      mode ===
-      "mathematics_physics";
-
-
-    /*
-     * 未解決問題研究用の
-     * 多角的アプローチ。
-     *
-     * AI側で最低10種類以上を
-     * 実行するための指定。
-     */
-    const researchApproaches = [
-
-      "direct_proof",
-
-      "contradiction",
-
-      "backward_reasoning",
-
-      "forward_reasoning",
-
-      "counterexample_search",
-
-      "attempt_to_break_current_conclusion",
-
-      "generalization",
-
-      "specialization",
-
-      "analogy_with_known_theorems",
-
-      "alternative_derivation",
-
-      "computational_experiment",
-
-      "structural_analysis",
-
-      "extreme_case_analysis",
-
-      "assumption_removal",
-
-      "assumption_strengthening",
-
-      "induction",
-
-      "deduction",
-
-      "literature_comparison",
-
-      "failure_cause_analysis",
-
-      "cross_field_connection"
-
-    ];
-
-
-    const payload = {
-
-      theme,
-
-      source:
-        "Research AI Lab",
-
-      mode:
-        physicsEnabled
-          ? "mathematics_physics"
-          : "mathematics",
-
-      physics_enabled:
-        physicsEnabled,
-
-      context,
-
-      research_policy: {
-
-        continue_unresolved_problem:
-          true,
-
-        do_not_stop_because_unproven:
-          true,
-
-        do_not_answer_impossible:
-          true,
-
-        minimum_approaches:
-          10,
-
-        attempt_to_break_conclusions:
-          true,
-
-        generate_derivative_hypotheses:
-          true,
-
-        search_counterexamples:
-          true,
-
-        analyze_failure_causes:
-          true,
-
-        reuse_all_relevant_history:
-          true,
-
-        separate_research_contexts:
-          true,
-
-        no_plausible_lies:
-          true,
-
-        no_unverified_claims:
-          true,
-
-        literature_verification:
-          true,
-
-        known_math_avoidance:
-          true,
-
-        independent_verification:
-          true,
-
-        alternative_proofs:
-          true,
-
-        route_block_after:
-          3
-
-      },
-
-      approaches:
-        researchApproaches
-
-    };
-
-
-    /*
-     * ジョブ作成。
-     */
-    const job =
-      await createResearchJob({
-        jobType:
-          "research_cycle",
-        priority:
-          10,
-        payload
-      });
-
-
-    activeJobId =
-      job.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
-    renderJob(
-      job
-    );
-
-
-    setStatus(
-      "研究を開始しました。AIが複数の方法から検証を進めています。",
-      "success"
-    );
-
-
-    /*
-     * 直ちにworker起動を要求。
-     */
-    await kickWorker(
-      job.id
-    );
-
-
-    /*
-     * ブラウザ側でも監視開始。
-     */
-    startPolling();
-
-
-  } catch (error) {
-
-    console.error(
-      "Start research:",
-      error
-    );
-
-
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = false;
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = true;
-
-
-    setStatus(
-      `研究開始失敗: ${
-        error.message
-      }`,
-      "error"
-    );
-
-
-  } finally {
-
-    isStartingResearch =
-      false;
-
-  }
-
-}
-
-
-/* =========================================================
-   GET RESEARCH CONTEXT
-========================================================= */
-
-async function getResearchContext(
-  theme
-) {
-
-  try {
-
-    /*
-     * 重要:
-     *
-     * 研究テーマに関係する過去結果を
-     * できるだけAIに渡す。
-     *
-     * 「直近だけ」ではなく、
-     * 成功・失敗・△を区別して渡す。
-     */
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_results"
-        )
-        .select(
-          [
-            "id",
-            "title",
-            "hypothesis",
-            "content",
-            "status",
-            "evaluation",
-            "confidence_level",
-            "is_human_saved",
-            "created_at"
-          ].join(",")
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .order(
-          "created_at",
-          {
-            ascending: false
-          }
-        )
-        .limit(
-          CONTEXT_RESULT_LIMIT
-        );
-
-
-    if (error)
-      throw error;
-
-
-    const results =
-      data || [];
-
-
-    researchContext =
-      results;
-
-
-    const positive =
-      [];
-
-    const uncertain =
-      [];
-
-    const negative =
-      [];
-
-
-    results.forEach(item => {
-
-      const symbol =
-        resultSymbol(item);
-
-
-      const record = {
-
-        id:
-          item.id,
-
-        title:
-          item.title,
-
-        hypothesis:
-          item.hypothesis,
-
-        evaluation:
-          item.evaluation,
-
-        symbol,
-
-        confidence:
-          item.confidence_level,
-
-        saved:
-          !!item.is_human_saved,
-
-        content:
-          parseJson(
-            item.content
-          ),
-
-        created_at:
-          item.created_at
-
-      };
-
-
-      if (symbol === "⭕")
-        positive.push(record);
-
-      else if (symbol === "❌")
-        negative.push(record);
-
-      else
-        uncertain.push(record);
-
-    });
-
-
-    return {
-
-      current_theme:
-        theme,
-
-      total_previous_results:
-        results.length,
-
-      positive_results:
-        positive,
-
-      uncertain_results:
-        uncertain,
-
-      failed_results:
-        negative,
-
-      instruction:
-        "過去研究を再利用し、同じ失敗を繰り返さず、成功した方法も別の問題へ一般化できるか検討する。",
-
-      common_failure_analysis:
-        true,
-
-      route_memory:
-        true
-
-    };
-
-
-  } catch (error) {
-
-    console.warn(
-      "Research context:",
-      error
-    );
-
-
-    return {
-
-      current_theme:
-        theme,
-
-      total_previous_results:
-        0,
-
-      positive_results:
-        [],
-
-      uncertain_results:
-        [],
-
-      failed_results:
-        [],
-
-      common_failure_analysis:
-        true,
-
-      route_memory:
-        true
-
-    };
-
-  }
-
-}
-
-
-/* =========================================================
-   CLAUDE / EXTERNAL AI INPUT
-========================================================= */
-
-/*
- * Claude等でユーザーが考えた内容を
- * Research AIへ渡す。
- *
- * HTML側に以下のIDがあれば動作:
- *
- * externalResearchInput
- * externalResearchTitle
- * externalResearchSend
- */
-
-async function submitExternalResearch() {
-
-  const input =
-    $("externalResearchInput");
-
-  if (!input)
-    return;
-
-
-  const content =
-    input.value.trim();
-
-
-  if (!content) {
-
-    setStatus(
-      "外部AIの研究結果を入力してください。",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  const title =
-    $("externalResearchTitle")
-      ?.value
-      ?.trim() ||
-    "外部AIから提供された研究案";
-
-
-  try {
-
-    const payload = {
-
-      theme:
-        $("questionInput")
-          ?.value
-          ?.trim() ||
-        title,
-
-      source:
-        "external_ai",
-
-      external_source:
-        "Claude / User",
-
-      user_supplied_research:
-        content,
-
-      instruction:
-        "この研究案を正しいと仮定せず、反例・矛盾・別証明・一般化・特殊化・既知結果との比較を行い、独立に検証する。"
-
-    };
-
-
-    const job =
-      await createResearchJob({
-
-        jobType:
-          "external_research_verification",
-
-        priority:
-          15,
-
-        payload
-
-      });
-
-
-    activeJobId =
-      job.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
-    renderJob(
-      job
-    );
-
-
-    setStatus(
-      "外部AIの研究案を検証キューへ送信しました。",
-      "success"
-    );
-
-
-    await kickWorker(
-      job.id
-    );
-
-
-    startPolling();
-
-
-  } catch (error) {
-
-    console.error(
-      "External research:",
-      error
-    );
-
-
-    setStatus(
-      `外部研究送信失敗: ${
-        error.message
-      }`,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   REVERIFICATION
-========================================================= */
-
-async function requestReverification(
-  result
-) {
-
-  if (!result?.id)
-    return;
-
-
-  try {
-
-    const content =
-      parseJson(
-        result.content
-      );
-
-
-    const payload = {
-
-      theme:
-        result.hypothesis ||
-        result.title ||
-        "Research",
-
-      source:
-        "positive_result_reverification",
-
-      parent_result_id:
-        result.id,
-
-      verification_modes: [
-
-        "contradiction",
-
-        "attempt_to_break_current_conclusion",
-
-        "backward_reasoning",
-
-        "forward_reasoning",
-
-        "counterexample",
-
-        "alternative_derivation",
-
-        "generalization",
-
-        "specialization",
-
-        "independent_verification",
-
-        "literature_comparison",
-
-        "computational_experiment",
-
-        "failure_cause_analysis"
-
-      ],
-
-      previous_result:
-        content
-
-    };
-
-
-    const job =
-      await createResearchJob({
-
-        jobType:
-          "reverification",
-
-        priority:
-          20,
-
-        payload
-
-      });
-
-
-    activeJobId =
-      job.id;
-
-
-    localStorage.setItem(
-      "active_research_job",
-      activeJobId
-    );
-
-
-    renderJob(
-      job
-    );
-
-
-    setStatus(
-      "研究結果を再検証キューへ登録しました。",
-      "success"
-    );
-
-
-    await kickWorker(
-      job.id
-    );
-
-
-    startPolling();
-
-
-  } catch (error) {
-
-    console.error(
-      "Reverification:",
-      error
-    );
-
-
-    setStatus(
-      `再検証登録失敗: ${
-        error.message
-      }`,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   STOP
-========================================================= */
-
-async function stopResearch() {
-
-  if (!activeJobId) {
-
-    setStatus(
-      "停止対象のジョブがありません。",
-      "error"
-    );
-
-    return;
-
-  }
-
-
-  if ($("stopButton"))
-    $("stopButton")
-      .disabled = true;
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .update({
-
-          status:
-            "cancelled",
-
-          finished_at:
-            new Date().toISOString(),
-
-          error_message:
-            "Cancelled by user"
-
-        })
-        .eq(
-          "id",
-          activeJobId
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .in(
-          "status",
-          [
-            "queued",
-            "running"
-          ]
-        )
-        .select(
-          "id,status"
-        );
-
-
-    if (error)
-      throw error;
-
-
-    if (!data?.length) {
-
-      setStatus(
-        "ジョブはすでに終了している可能性があります。",
-        "error"
-      );
-
-    } else {
-
-      setStatus(
-        "研究停止を要求しました。",
-        "success"
-      );
-
-    }
-
-
-    await refreshActiveJob();
-
-
-  } catch (error) {
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = false;
-
-
-    setStatus(
-      `停止失敗: ${
-        error.message
-      }`,
-      "error"
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   JOB RENDER
-========================================================= */
-
-function renderJob(
-  job
-) {
-
-  const panel =
-    $("jobPanel");
-
-  if (!panel)
-    return;
-
-
-  panel.classList.remove(
-    "hidden"
-  );
-
-
-  if ($("jobId"))
-    $("jobId")
-      .textContent =
-      job.id || "—";
-
-
-  if ($("jobStatus"))
-    $("jobStatus")
-      .textContent =
-      String(
-        job.status ||
-        "unknown"
-      ).toUpperCase();
-
-
-  if ($("jobCreated"))
-    $("jobCreated")
-      .textContent =
-      formatDate(
-        job.created_at
-      );
-
-
-  if ($("jobStarted"))
-    $("jobStarted")
-      .textContent =
-      formatDate(
-        job.started_at
-      );
-
-
-  if ($("jobFinished"))
-    $("jobFinished")
-      .textContent =
-      formatDate(
-        job.finished_at
-      );
-
-
-  let percent = 0;
-
-  let text =
-    "待機中";
-
-
-  switch (
-    job.status
-  ) {
-
-    case "queued":
-
-      percent = 15;
-
-      text =
-        "研究開始処理中";
-
-      break;
-
-
-    case "running":
-
-      percent = 60;
-
-      text =
-        "AI研究実行中";
-
-      break;
-
-
-    case "completed":
-
-      percent = 100;
-
-      text =
-        "研究完了";
-
-      break;
-
-
-    case "failed":
-
-      percent = 100;
-
-      text =
-        "研究失敗";
-
-      break;
-
-
-    case "cancelled":
-
-      percent = 100;
-
-      text =
-        "研究停止";
-
-      break;
-
-  }
-
-
-  if ($("progressValue"))
-    $("progressValue")
-      .style.width =
-      `${percent}%`;
-
-
-  if ($("progressPercent"))
-    $("progressPercent")
-      .textContent =
-      `${percent}%`;
-
-
-  if ($("progressText"))
-    $("progressText")
-      .textContent =
-      text;
-
-}
-
-
-/* =========================================================
-   REFRESH ACTIVE JOB
-========================================================= */
-
-async function refreshActiveJob() {
-
-  if (!activeJobId)
-    return;
-
-
-  try {
-
-    const {
-      data,
-      error
-    } =
-      await sb
-        .from(
-          "research_jobs"
-        )
-        .select(
-          [
-            "id",
-            "project_id",
-            "job_type",
-            "status",
-            "priority",
-            "payload",
-            "result",
-            "error_message",
-            "started_at",
-            "finished_at",
-            "created_at"
-          ].join(",")
-        )
-        .eq(
-          "id",
-          activeJobId
-        )
-        .eq(
-          "project_id",
-          PROJECT_ID
-        )
-        .maybeSingle();
-
-
-    if (error)
-      throw error;
-
-
-    if (!data) {
-
-      activeJobId =
-        null;
-
-      localStorage.removeItem(
-        "active_research_job"
-      );
-
-      stopPolling();
-
-      if ($("researchButton"))
-        $("researchButton")
-          .disabled = false;
-
-      if ($("stopButton"))
-        $("stopButton")
-          .disabled = true;
-
-      return;
-
-    }
-
-
-    renderJob(
-      data
-    );
-
-
-    /*
-     * queuedが長時間続いている場合、
-     * kick-workerをもう一度要求する。
-     *
-     * これによって
-     * 「queuedのまま永久停止」
-     * を防ぐ。
-     */
-
-    if (
-      data.status ===
-      "queued"
-    ) {
-
-      const created =
-        data.created_at
-          ? new Date(
-              data.created_at
-            ).getTime()
-          : Date.now();
-
-
-      const age =
-        Date.now() -
-        created;
-
-
-      /*
-       * 15秒以上queuedなら
-       * worker起動を再要求。
-       */
-      if (
-        age >
-        15000
-      ) {
-
-        await kickWorker(
-          data.id
-        );
-
-      }
-
-    }
-
-
-    const finished =
-      TERMINAL_STATUSES
-        .includes(
-          data.status
-        );
-
-
-    if (!finished)
-      return;
-
-
-    stopPolling();
-
-
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = false;
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = true;
-
-
-    if (
-      data.status ===
-      "completed"
-    ) {
-
-      setStatus(
-        "研究完了。結果を取得しました。",
-        "success"
-      );
-
-
-      /*
-       * DBへの結果保存をworker側で
-       * 行っているため、
-       * 完了後に履歴を再取得。
-       */
-      await loadHistory();
-
-      await loadJobs();
-
-
-    }
-
-
-    if (
-      data.status ===
-      "failed"
-    ) {
-
-      setStatus(
-        `研究失敗: ${
-          data.error_message ||
-          "Worker error"
-        }`,
-        "error"
-      );
-
-      await loadJobs();
-
-    }
-
-
-    if (
-      data.status ===
-      "cancelled"
-    ) {
-
-      setStatus(
-        "研究は停止されました。",
-        "success"
-      );
-
-    }
-
-
-    activeJobId =
-      null;
-
-
-    localStorage.removeItem(
-      "active_research_job"
-    );
-
-
-  } catch (error) {
-
-    console.error(
-      "Job polling:",
-      error
-    );
-
-  }
-
-}
-
-
-/* =========================================================
-   POLLING
-========================================================= */
-
-function startPolling() {
-
-  stopPolling();
-
-  refreshActiveJob();
-
-
-  pollTimer =
-    setInterval(
-      refreshActiveJob,
-      POLL_INTERVAL
-    );
-
-}
-
-
-function stopPolling() {
-
-  if (pollTimer) {
-
-    clearInterval(
-      pollTimer
-    );
-
-    pollTimer = null;
-
-  }
-
-}
-
-
-/* =========================================================
-   3D RESEARCH BRIDGE
-========================================================= */
-
-window.ResearchModelBridge = {
-
-  getCurrentResearch() {
-
-    return selectedResult;
-
-  },
-
-
-  getResearchContext() {
-
-    return researchContext;
-
-  },
-
-
-  async requestModelResearch(
-    modelData
-  ) {
-
-    const theme =
-      `数学モデル探索: ${
-        JSON.stringify(
-          modelData
-        )
-      }`;
-
-
-    const payload = {
-
-      theme,
-
-      model:
-        modelData,
-
-      source:
-        "3D mathematical model",
-
-      mode:
-        "model_experiment",
-
-      research_rules: {
-
-        counterexample_search:
-          true,
-
-        attempt_to_break_result:
-          true,
-
-        alternative_transformations:
-          true,
-
-        generalization:
-          true,
-
-        physical_analogy:
-          true,
-
-        no_unverified_claims:
-          true,
-
-        minimum_approaches:
-          10
-
-      }
-
-    };
-
-
-    const job =
-      await createResearchJob({
-
-        jobType:
-          "model_experiment",
-
-        priority:
-          5,
-
-        payload
-
-      });
-
-
-    await kickWorker(
-      job.id
-    );
-
-
-    return job;
-
-  }
-
-};
-
-
-/* =========================================================
-   EXTERNAL RESEARCH BUTTON
-========================================================= */
-
-function setupExternalResearchButton() {
-
-  const button =
-    $("externalResearchSend");
-
-  if (!button)
-    return;
-
-
-  button.addEventListener(
-    "click",
-    submitExternalResearch
-  );
-
-}
-
-
-/* =========================================================
-   CLEAR
-========================================================= */
-
-function clearResearchInput() {
-
-  const input =
-    $("questionInput");
-
-  if (input)
-    input.value = "";
-
-
-  setStatus("");
-
-}
-
-
-/* =========================================================
-   INIT
-========================================================= */
-
-function init() {
-
-  document
-    .querySelectorAll(
-      ".nav-button"
-    )
-    .forEach(button => {
-
-      button.addEventListener(
-        "click",
-        () =>
-          showPage(
-            button.dataset.page
-          )
-        );
-
-    });
-
-
-  $("researchButton")
-    ?.addEventListener(
-      "click",
-      startResearch
-    );
-
-
-  $("stopButton")
-    ?.addEventListener(
-      "click",
-      stopResearch
-    );
-
-
-  $("clearButton")
-    ?.addEventListener(
-      "click",
-      clearResearchInput
-    );
-
-
-  setupExternalResearchButton();
-
-
-  /*
-   * 初期接続確認
-   */
-  checkConnection();
-
-
-  /*
-   * 履歴を取得するが、
-   * 詳細は自動表示しない。
-   */
-  loadHistory();
-
-
-  /*
-   * ブラウザを閉じている間に
-   * GitHub Actions等で処理された
-   * ジョブを復旧。
-   */
-  recoverJob();
-
-}
-
-
-/* =========================================================
-   RECOVER BACKGROUND JOB
-========================================================= */
-
-async function recoverJob() {
-
-  if (!activeJobId)
-    return;
-
-
-  await refreshActiveJob();
-
-
-  if (activeJobId) {
-
-    if ($("researchButton"))
-      $("researchButton")
-        .disabled = true;
-
-    if ($("stopButton"))
-      $("stopButton")
-        .disabled = false;
-
-
-    startPolling();
-
-  }
-
-}
-
-
-/* =========================================================
-   PAGE START
-========================================================= */
-
-if (
-  document.readyState ===
-  "loading"
-) {
-
-  document.addEventListener(
-    "DOMContentLoaded",
-    init
-  );
-
-} else {
-
-  init();
 
 }
