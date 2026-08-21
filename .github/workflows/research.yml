@@ -1,450 +1,176 @@
-name: Math Research Lab
+name: Research AI Lab Worker
 
 on:
-  workflow_dispatch:
 
-  repository_dispatch:
-    types:
-      - research-job
-
+  # 5分ごとにworkerを起動
   schedule:
-    # 即時起動の保険
     - cron: "*/5 * * * *"
 
-permissions:
-  contents: read
+  # GitHubから手動実行可能
+  workflow_dispatch:
 
-concurrency:
-  group: math-research-lab-worker
-  cancel-in-progress: false
+  # push時にも確認できる
+  push:
+    branches:
+      - main
 
 
 jobs:
 
-  research:
-
-    name: AI Mathematical Research Worker
+  research-worker:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 15
-
-    env:
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-
+    timeout-minutes: 10
 
     steps:
 
-      - name: Initialize worker
-        run: |
+      # =====================================================
+      # START
+      # =====================================================
 
-          set -e
+      - name: Start Research AI Worker
+        env:
 
-          echo "======================================"
-          echo " Research AI Lab Worker"
-          echo "======================================"
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
-          echo "Started:"
-          date -u
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
-
-      # =========================================================
-      # 1. キュー取得
-      # =========================================================
-
-      - name: Get queued research job
-
-        id: get_job
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
 
         run: |
 
-          set -e
+          echo "======================================"
+          echo "Research AI Lab Worker"
+          echo "======================================"
 
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
+          echo "Starting kick-worker..."
 
           HTTP_STATUS=$(curl \
             --silent \
             --show-error \
-            --output /tmp/jobs.json \
+            --output worker-response.json \
             --write-out "%{http_code}" \
-            --request GET \
-            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=1" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json")
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions"}')
 
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
 
-          echo "Queue HTTP status: ${HTTP_STATUS}"
+          cat worker-response.json
 
+          echo ""
 
-          if [ "${HTTP_STATUS}" != "200" ]; then
-            cat /tmp/jobs.json
-            exit 1
-          fi
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
 
+            echo "Worker request succeeded."
 
-          python3 <<'PY'
+          else
 
-          import json
+            echo "Worker request failed."
 
-          with open(
-              "/tmp/jobs.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-
-              jobs = json.load(f)
-
-
-          if not jobs:
-
-              print("QUEUE EMPTY")
-
-              with open(
-                  "/tmp/job_exists",
-                  "w"
-              ) as f:
-
-                  f.write("false")
-
-          else:
-
-              job = jobs[0]
-
-              print(
-                  "FOUND JOB:",
-                  job.get("id")
-              )
-
-              with open(
-                  "/tmp/job.json",
-                  "w",
-                  encoding="utf-8"
-              ) as f:
-
-                  json.dump(
-                      job,
-                      f,
-                      ensure_ascii=False
-                  )
-
-              with open(
-                  "/tmp/job_exists",
-                  "w"
-              ) as f:
-
-                  f.write("true")
-
-          PY
-
-
-          echo \
-            "job_exists=$(cat /tmp/job_exists)" \
-            >> "$GITHUB_OUTPUT"
-
-
-      # =========================================================
-      # 2. ジョブを安全にclaim
-      # =========================================================
-
-      - name: Claim research job
-
-        id: claim_job
-
-        if:
-          steps.get_job.outputs.job_exists == 'true'
-
-        run: |
-
-          set -e
-
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
-
-          JOB_ID=$(
-            python3 -c \
-            'import json; print(json.load(open("/tmp/job.json"))["id"])'
-          )
-
-
-          STARTED_AT=$(
-            date -u +"%Y-%m-%dT%H:%M:%SZ"
-          )
-
-
-          HTTP_STATUS=$(curl \
-            --silent \
-            --show-error \
-            --output /tmp/claim.json \
-            --write-out "%{http_code}" \
-            --request PATCH \
-            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            --header "Prefer: return=representation" \
-            --data "{\"status\":\"running\",\"started_at\":\"${STARTED_AT}\"}")
-
-
-          if \
-            [ "${HTTP_STATUS}" -lt 200 ] ||
-            [ "${HTTP_STATUS}" -ge 300 ]
-          then
-
-            cat /tmp/claim.json
             exit 1
 
           fi
 
 
-          python3 <<'PY'
-
-          import json
-
-          with open(
-              "/tmp/claim.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-
-              data = json.load(f)
-
-
-          if not data:
-
-              print(
-                  "Another worker already claimed this job."
-              )
-
-              open(
-                  "/tmp/job_claimed",
-                  "w"
-              ).write("false")
-
-          else:
-
-              print(
-                  "JOB CLAIMED"
-              )
-
-              open(
-                  "/tmp/job_claimed",
-                  "w"
-              ).write("true")
-
-          PY
-
-
-          echo \
-            "job_claimed=$(cat /tmp/job_claimed)" \
-            >> "$GITHUB_OUTPUT"
-
-
-      # =========================================================
-      # 3. ここから既存の研究処理
-      # =========================================================
-
-      - name: Load previous research
-
-        if:
-          steps.claim_job.outputs.job_claimed == 'true'
-
-        run: |
-
-          set -e
-
-          BASE_URL="${SUPABASE_URL%/}"
-          BASE_URL="${BASE_URL%/rest/v1}"
-
-          PROJECT_ID=$(
-            python3 -c \
-            'import json; print(json.load(open("/tmp/job.json"))["project_id"])'
-          )
-
-
-          curl \
-            --silent \
-            --show-error \
-            --fail \
-            --url "${BASE_URL}/rest/v1/research_results?select=id,title,hypothesis,content,evaluation,confidence_level,status,created_at&project_id=eq.${PROJECT_ID}&order=created_at.desc&limit=100" \
-            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-            --header "Content-Type: application/json" \
-            > /tmp/previous_results.json
-
-
-          echo "PREVIOUS RESEARCH LOADED"
-
-
-      # =========================================================
-      # 4. 研究記憶
-      # =========================================================
-
-      - name: Build research memory
-
-        if:
-          steps.claim_job.outputs.job_claimed == 'true'
-
-        run: |
-
-          python3 <<'PY'
-
-          import json
-          from collections import Counter
-          import re
-
-
-          with open(
-              "/tmp/previous_results.json",
-              "r",
-              encoding="utf-8"
-          ) as f:
-
-              results = json.load(f)
-
-
-          routes = []
-
-
-          for item in results:
-
-              try:
-
-                  content = item.get(
-                      "content"
-                  )
-
-                  if isinstance(
-                      content,
-                      str
-                  ):
-
-                      content = json.loads(
-                          content
-                      )
-
-              except Exception:
-
-                  content = {}
-
-
-              if not isinstance(
-                  content,
-                  dict
-              ):
-
-                  continue
-
-
-              route = {
-
-                  "research_question":
-                      content.get(
-                          "research_question"
-                      ),
-
-                  "approach":
-                      content.get(
-                          "approach"
-                      ),
-
-                  "proof_strategy":
-                      content.get(
-                          "proof_strategy"
-                      )
-
-              }
-
-
-              raw = json.dumps(
-                  route,
-                  ensure_ascii=False,
-                  sort_keys=True
-              )
-
-
-              raw = re.sub(
-                  r"\s+",
-                  " ",
-                  raw
-              ).strip().lower()
-
-
-              if len(raw) >= 20:
-
-                  routes.append(raw)
-
-
-          counts = Counter(routes)
-
-
-          blocked_routes = []
-
-
-          for route, count in counts.items():
-
-              if count >= 3:
-
-                  blocked_routes.append({
-
-                      "signature":
-                          route[:1000],
-
-                      "count":
-                          count,
-
-                      "blocked":
-                          True
-
-                  })
-
-
-          memory = {
-
-              "all_results_count":
-                  len(results),
-
-              "recent_results":
-                  results[:100],
-
-              "blocked_routes":
-                  blocked_routes
-
-          }
-
-
-          with open(
-              "/tmp/ai_memory.json",
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-                  memory,
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          PY
-
-
-      # =========================================================
-      # 5. 既存の
-      #    文献検索
-      #    AI呼び出し
-      #    JSON検証
-      #    結果保存
-      #    メモ更新
-      #    独立検証
-      #    完了処理
+      # =====================================================
+      # SECOND KICK
+      # =====================================================
       #
-      #    ↓
-      #    現在のresearch.ymlの
-      #    4〜16をそのまま継続
-      # =========================================================
+      # 1回目で1ジョブ処理。
+      # 2回目も呼ぶことで、queuedが複数ある場合に
+      # 連続処理できる。
+      #
+
+      - name: Continue Worker
+        env:
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+        run: |
+
+          echo "Starting second worker pass..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output worker-response-2.json \
+            --write-out "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions","pass":2}')
+
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
+
+          cat worker-response-2.json
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+
+            echo "Second worker pass succeeded."
+
+          else
+
+            echo "Second worker pass failed."
+
+            exit 1
+
+          fi
+
+
+      # =====================================================
+      # THIRD KICK
+      # =====================================================
+
+      - name: Final Worker Pass
+        env:
+
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+          WORKER_SECRET: ${{ secrets.WORKER_SECRET }}
+
+        run: |
+
+          echo "Starting final worker pass..."
+
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output worker-response-3.json \
+            --write-out "%{http_code}" \
+            --max-time 120 \
+            -X POST \
+            "${SUPABASE_URL}/functions/v1/kick-worker" \
+            -H "Content-Type: application/json" \
+            -H "x-worker-secret: ${WORKER_SECRET}" \
+            -d '{"source":"github-actions","pass":3}')
+
+          echo ""
+          echo "HTTP STATUS: ${HTTP_STATUS}"
+          echo ""
+
+          cat worker-response-3.json
+
+          if [ "${HTTP_STATUS}" -ge 200 ] && [ "${HTTP_STATUS}" -lt 300 ]; then
+
+            echo "Final worker pass succeeded."
+
+          else
+
+            echo "Final worker pass failed."
+
+            exit 1
+
+          fi
