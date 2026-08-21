@@ -3,1094 +3,448 @@ name: Math Research Lab
 on:
   workflow_dispatch:
 
+  repository_dispatch:
+    types:
+      - research-job
+
   schedule:
+    # 即時起動の保険
     - cron: "*/5 * * * *"
 
 permissions:
   contents: read
 
 concurrency:
-  group: math-research-worker
+  group: math-research-lab-worker
   cancel-in-progress: false
+
 
 jobs:
 
-  research-worker:
+  research:
+
+    name: AI Mathematical Research Worker
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 14
+    timeout-minutes: 15
 
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      PROJECT_ID: "ab429192-27d2-47e4-9ad7-08b639f45120"
-
-      OPENROUTER_MODEL: "openrouter/free"
-
-      MAX_JOBS_PER_RUN: "1"
-
-      MAX_CONTEXT_RESULTS: "30"
 
     steps:
 
-      - name: Validate secrets
-        shell: bash
+      - name: Initialize worker
         run: |
 
           set -e
 
-          if [ -z "$SUPABASE_URL" ]; then
-            echo "SUPABASE_URL is missing"
-            exit 1
-          fi
+          echo "======================================"
+          echo " Research AI Lab Worker"
+          echo "======================================"
 
-          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
-            echo "SUPABASE_SERVICE_ROLE_KEY is missing"
-            exit 1
-          fi
+          echo "Started:"
+          date -u
 
-          if [ -z "$OPENROUTER_API_KEY" ]; then
-            echo "OPENROUTER_API_KEY is missing"
-            exit 1
-          fi
 
-          echo "Required secrets are present."
+      # =========================================================
+      # 1. キュー取得
+      # =========================================================
 
-      - name: Run research worker
-        shell: bash
+      - name: Get queued research job
+
+        id: get_job
+
         run: |
 
-          node <<'NODE'
+          set -e
 
-          const SUPABASE_URL =
-            process.env.SUPABASE_URL.replace(/\/+$/, "");
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
 
-          const SUPABASE_KEY =
-            process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-          const OPENROUTER_KEY =
-            process.env.OPENROUTER_API_KEY;
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/jobs.json \
+            --write-out "%{http_code}" \
+            --request GET \
+            --url "${BASE_URL}/rest/v1/research_jobs?select=*&status=eq.queued&order=priority.desc,created_at.asc&limit=1" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json")
 
-          const PROJECT_ID =
-            process.env.PROJECT_ID;
 
-          const MODEL =
-            process.env.OPENROUTER_MODEL ||
-            "openrouter/free";
+          echo "Queue HTTP status: ${HTTP_STATUS}"
 
-          const MAX_JOBS =
-            Number(
-              process.env.MAX_JOBS_PER_RUN || "1"
-            );
 
-          const MAX_CONTEXT =
-            Number(
-              process.env.MAX_CONTEXT_RESULTS || "30"
-            );
+          if [ "${HTTP_STATUS}" != "200" ]; then
+            cat /tmp/jobs.json
+            exit 1
+          fi
 
 
-          /* =================================================
-             HTTP HELPERS
-          ================================================= */
+          python3 <<'PY'
 
-          async function supabaseFetch(
-            path,
-            options = {}
-          ) {
+          import json
 
-            const response =
-              await fetch(
-                `${SUPABASE_URL}${path}`,
-                {
-                  ...options,
+          with open(
+              "/tmp/jobs.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
 
-                  headers: {
-                    "apikey":
-                      SUPABASE_KEY,
+              jobs = json.load(f)
 
-                    "Authorization":
-                      `Bearer ${SUPABASE_KEY}`,
 
-                    "Content-Type":
-                      "application/json",
+          if not jobs:
 
-                    ...(options.headers || {})
-                  }
-                }
-              );
+              print("QUEUE EMPTY")
 
+              with open(
+                  "/tmp/job_exists",
+                  "w"
+              ) as f:
 
-            const text =
-              await response.text();
+                  f.write("false")
 
+          else:
 
-            let data = null;
+              job = jobs[0]
 
+              print(
+                  "FOUND JOB:",
+                  job.get("id")
+              )
 
-            if (text) {
+              with open(
+                  "/tmp/job.json",
+                  "w",
+                  encoding="utf-8"
+              ) as f:
 
-              try {
-
-                data =
-                  JSON.parse(text);
-
-              } catch {
-
-                data =
-                  text;
-
-              }
-
-            }
-
-
-            if (!response.ok) {
-
-              throw new Error(
-                `Supabase ${response.status}: ${
-                  typeof data === "string"
-                    ? data
-                    : JSON.stringify(data)
-                }`
-              );
-
-            }
-
-
-            return data;
-
-          }
-
-
-          /* =================================================
-             JSON
-          ================================================= */
-
-          function parseJson(value) {
-
-            if (
-              value === null ||
-              value === undefined ||
-              value === ""
-            ) {
-              return {};
-            }
-
-
-            if (
-              typeof value === "object"
-            ) {
-              return value;
-            }
-
-
-            try {
-
-              return JSON.parse(
-                value
-              );
-
-            } catch {
-
-              return {
-                text:
-                  String(value)
-              };
-
-            }
-
-          }
-
-
-          /* =================================================
-             TEXT EXTRACTION
-          ================================================= */
-
-          function cleanModelText(
-            value
-          ) {
-
-            let text =
-              String(
-                value || ""
-              ).trim();
-
-
-            if (
-              text.startsWith("```")
-            ) {
-
-              text =
-                text
-                  .replace(
-                    /^```(?:json)?\s*/i,
-                    ""
-                  )
-                  .replace(
-                    /\s*```$/,
-                    ""
-                  )
-                  .trim();
-
-            }
-
-
-            return text;
-
-          }
-
-
-          /* =================================================
-             MODEL JSON
-          ================================================= */
-
-          function parseModelJson(
-            value
-          ) {
-
-            const text =
-              cleanModelText(
-                value
-              );
-
-
-            try {
-
-              return JSON.parse(
-                text
-              );
-
-            } catch {}
-
-
-            const first =
-              text.indexOf("{");
-
-            const last =
-              text.lastIndexOf("}");
-
-
-            if (
-              first >= 0 &&
-              last > first
-            ) {
-
-              try {
-
-                return JSON.parse(
-                  text.slice(
-                    first,
-                    last + 1
-                  )
-                );
-
-              } catch {}
-
-            }
-
-
-            return null;
-
-          }
-
-
-          /* =================================================
-             OPENROUTER
-          ================================================= */
-
-          async function askAI(
-            system,
-            user
-          ) {
-
-            const response =
-              await fetch(
-                "https://openrouter.ai/api/v1/chat/completions",
-                {
-
-                  method:
-                    "POST",
-
-                  headers: {
-
-                    "Authorization":
-                      `Bearer ${OPENROUTER_KEY}`,
-
-                    "Content-Type":
-                      "application/json",
-
-                    "HTTP-Referer":
-                      "https://beadajbimgpephqszbfy.supabase.co",
-
-                    "X-Title":
-                      "Research AI Lab"
-
-                  },
-
-                  body:
-                    JSON.stringify({
-
-                      model:
-                        MODEL,
-
-                      temperature:
-                        0.2,
-
-                      max_tokens:
-                        5000,
-
-                      messages: [
-
-                        {
-                          role:
-                            "system",
-
-                          content:
-                            system
-                        },
-
-                        {
-                          role:
-                            "user",
-
-                          content:
-                            user
-                        }
-
-                      ]
-
-                    })
-
-                }
-              );
-
-
-            const text =
-              await response.text();
-
-
-            let data = null;
-
-
-            try {
-
-              data =
-                JSON.parse(
-                  text
-                );
-
-            } catch {
-
-              data = {
-                raw:
-                  text
-              };
-
-            }
-
-
-            if (!response.ok) {
-
-              throw new Error(
-                `OpenRouter ${response.status}: ${
-                  typeof data === "string"
-                    ? data
-                    : JSON.stringify(data)
-                }`
-              );
-
-            }
-
-
-            const content =
-              data
-                ?.choices?.[0]
-                ?.message?.content;
-
-
-            if (
-              !content
-            ) {
-
-              throw new Error(
-                "OpenRouter returned no message content"
-              );
-
-            }
-
-
-            return content;
-
-          }
-
-
-          /* =================================================
-             GET QUEUED JOB
-          ================================================= */
-
-          async function getQueuedJob() {
-
-            const rows =
-              await supabaseFetch(
-                `/rest/v1/research_jobs` +
-                `?project_id=eq.${encodeURIComponent(PROJECT_ID)}` +
-                `&status=eq.queued` +
-                `&order=priority.desc,created_at.asc` +
-                `&limit=1` +
-                `&select=*`,
-                {
-                  method:
-                    "GET"
-                }
-              );
-
-
-            return rows?.[0] || null;
-
-          }
-
-
-          /* =================================================
-             CLAIM JOB
-          ================================================= */
-
-          async function claimJob(
-            job
-          ) {
-
-            const rows =
-              await supabaseFetch(
-                `/rest/v1/research_jobs` +
-                `?id=eq.${encodeURIComponent(job.id)}` +
-                `&project_id=eq.${encodeURIComponent(PROJECT_ID)}` +
-                `&status=eq.queued`,
-                {
-
-                  method:
-                    "PATCH",
-
-                  headers: {
-                    "Prefer":
-                      "return=representation"
-                  },
-
-                  body:
-                    JSON.stringify({
-
-                      status:
-                        "running",
-
-                      started_at:
-                        new Date().toISOString(),
-
-                      error_message:
-                        null
-
-                    })
-
-                }
-              );
-
-
-            return rows?.[0] || null;
-
-          }
-
-
-          /* =================================================
-             UPDATE JOB
-          ================================================= */
-
-          async function updateJob(
-            id,
-            patch
-          ) {
-
-            return await supabaseFetch(
-              `/rest/v1/research_jobs` +
-              `?id=eq.${encodeURIComponent(id)}` +
-              `&project_id=eq.${encodeURIComponent(PROJECT_ID)}`,
-              {
-
-                method:
-                  "PATCH",
-
-                headers: {
-                  "Prefer":
-                    "return=representation"
-                },
-
-                body:
-                  JSON.stringify(
-                    patch
+                  json.dump(
+                      job,
+                      f,
+                      ensure_ascii=False
                   )
 
-              }
-            );
+              with open(
+                  "/tmp/job_exists",
+                  "w"
+              ) as f:
 
-          }
+                  f.write("true")
 
-
-          /* =================================================
-             PREVIOUS RESULTS
-          ================================================= */
-
-          async function getPreviousResults() {
-
-            const rows =
-              await supabaseFetch(
-                `/rest/v1/research_results` +
-                `?project_id=eq.${encodeURIComponent(PROJECT_ID)}` +
-                `&order=created_at.desc` +
-                `&limit=${MAX_CONTEXT}` +
-                `&select=id,title,hypothesis,content,status,evaluation,confidence_level,created_at`,
-                {
-                  method:
-                    "GET"
-                }
-              );
+          PY
 
 
-            return rows || [];
+          echo \
+            "job_exists=$(cat /tmp/job_exists)" \
+            >> "$GITHUB_OUTPUT"
 
-          }
+
+      # =========================================================
+      # 2. ジョブを安全にclaim
+      # =========================================================
+
+      - name: Claim research job
+
+        id: claim_job
+
+        if:
+          steps.get_job.outputs.job_exists == 'true'
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
 
 
-          /* =================================================
-             ROUTE HISTORY
-          ================================================= */
+          JOB_ID=$(
+            python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["id"])'
+          )
 
-          function buildRouteSummary(
-            results
-          ) {
 
-            return results.map(
-              item => ({
+          STARTED_AT=$(
+            date -u +"%Y-%m-%dT%H:%M:%SZ"
+          )
 
-                id:
-                  item.id,
 
-                title:
-                  item.title,
+          HTTP_STATUS=$(curl \
+            --silent \
+            --show-error \
+            --output /tmp/claim.json \
+            --write-out "%{http_code}" \
+            --request PATCH \
+            --url "${BASE_URL}/rest/v1/research_jobs?id=eq.${JOB_ID}&status=eq.queued" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: return=representation" \
+            --data "{\"status\":\"running\",\"started_at\":\"${STARTED_AT}\"}")
 
-                hypothesis:
-                  item.hypothesis,
 
-                evaluation:
-                  item.evaluation,
+          if \
+            [ "${HTTP_STATUS}" -lt 200 ] ||
+            [ "${HTTP_STATUS}" -ge 300 ]
+          then
 
-                confidence:
-                  item.confidence_level,
+            cat /tmp/claim.json
+            exit 1
 
-                content:
-                  parseJson(
-                    item.content
+          fi
+
+
+          python3 <<'PY'
+
+          import json
+
+          with open(
+              "/tmp/claim.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+
+              data = json.load(f)
+
+
+          if not data:
+
+              print(
+                  "Another worker already claimed this job."
+              )
+
+              open(
+                  "/tmp/job_claimed",
+                  "w"
+              ).write("false")
+
+          else:
+
+              print(
+                  "JOB CLAIMED"
+              )
+
+              open(
+                  "/tmp/job_claimed",
+                  "w"
+              ).write("true")
+
+          PY
+
+
+          echo \
+            "job_claimed=$(cat /tmp/job_claimed)" \
+            >> "$GITHUB_OUTPUT"
+
+
+      # =========================================================
+      # 3. ここから既存の研究処理
+      # =========================================================
+
+      - name: Load previous research
+
+        if:
+          steps.claim_job.outputs.job_claimed == 'true'
+
+        run: |
+
+          set -e
+
+          BASE_URL="${SUPABASE_URL%/}"
+          BASE_URL="${BASE_URL%/rest/v1}"
+
+          PROJECT_ID=$(
+            python3 -c \
+            'import json; print(json.load(open("/tmp/job.json"))["project_id"])'
+          )
+
+
+          curl \
+            --silent \
+            --show-error \
+            --fail \
+            --url "${BASE_URL}/rest/v1/research_results?select=id,title,hypothesis,content,evaluation,confidence_level,status,created_at&project_id=eq.${PROJECT_ID}&order=created_at.desc&limit=100" \
+            --header "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            --header "Content-Type: application/json" \
+            > /tmp/previous_results.json
+
+
+          echo "PREVIOUS RESEARCH LOADED"
+
+
+      # =========================================================
+      # 4. 研究記憶
+      # =========================================================
+
+      - name: Build research memory
+
+        if:
+          steps.claim_job.outputs.job_claimed == 'true'
+
+        run: |
+
+          python3 <<'PY'
+
+          import json
+          from collections import Counter
+          import re
+
+
+          with open(
+              "/tmp/previous_results.json",
+              "r",
+              encoding="utf-8"
+          ) as f:
+
+              results = json.load(f)
+
+
+          routes = []
+
+
+          for item in results:
+
+              try:
+
+                  content = item.get(
+                      "content"
                   )
 
-              })
-            );
+                  if isinstance(
+                      content,
+                      str
+                  ):
 
-          }
-
-
-          /* =================================================
-             RESEARCH SYSTEM
-          ================================================= */
-
-          const SYSTEM_PROMPT = `
-
-You are the autonomous research engine of Research AI Lab.
-
-You conduct mathematical research.
-
-CORE RULES:
-
-1. Never present an unsupported claim as fact.
-2. Never fabricate citations, papers, theorems, calculations, experiments, or sources.
-3. Explicitly distinguish:
-   - established fact
-   - conjecture
-   - heuristic
-   - calculation
-   - unresolved point
-4. Search for counterexamples.
-5. Try contradiction.
-6. Try backward reasoning.
-7. Try alternative derivations.
-8. Try independent verification.
-9. Avoid merely rediscovering elementary known mathematics.
-10. Compare against previous research routes.
-11. If a route has effectively been tried three or more times without progress, do not simply repeat it.
-12. A result may receive ⭕ only when there is a concrete mathematical reason to regard it as promising or verified.
-13. A result receives ❌ when it is contradicted, invalid, or clearly fails.
-14. Otherwise use △.
-15. Confidence is an integer from 0 to 5.
-16. Do not claim a new theorem merely because an argument sounds plausible.
-17. If a proof has a gap, identify the gap.
-18. Prefer explicit equations, finite checks, counterexamples, and logically checkable transformations.
-19. The research result must be useful to a future research cycle.
-
-Return ONLY valid JSON.
-
-Required JSON schema:
-
-{
-  "title": "short title",
-  "hypothesis": "precise hypothesis",
-  "evaluation": "⭕ or △ or ❌",
-  "confidence_level": 0,
-  "status": "completed",
-  "content": {
-    "question": "...",
-    "approach": "...",
-    "known_facts": [],
-    "derivation": [],
-    "verification": [],
-    "counterexample_search": [],
-    "alternative_approach": [],
-    "route_analysis": "...",
-    "result": "...",
-    "limitations": [],
-    "next_research": [],
-    "sources": []
-  }
-}
-
-IMPORTANT:
-
-If external literature cannot actually be verified in this environment,
-do NOT invent sources.
-Use an empty sources array and state that literature verification was not performed.
-
-`;
-
-
-          /* =================================================
-             BUILD USER PROMPT
-          ================================================= */
-
-          function buildResearchPrompt(
-            job,
-            previousResults
-          ) {
-
-            const payload =
-              parseJson(
-                job.payload
-              );
-
-
-            const theme =
-              payload.theme ||
-              "Mathematical research";
-
-
-            const context =
-              payload.context ||
-              {};
-
-
-            const previous =
-              previousResults
-                .map(
-                  item => ({
-                    id:
-                      item.id,
-
-                    title:
-                      item.title,
-
-                    hypothesis:
-                      item.hypothesis,
-
-                    evaluation:
-                      item.evaluation,
-
-                    confidence:
-                      item.confidence_level,
-
-                    content:
-                      parseJson(
-                        item.content
+                      content = json.loads(
+                          content
                       )
+
+              except Exception:
+
+                  content = {}
+
+
+              if not isinstance(
+                  content,
+                  dict
+              ):
+
+                  continue
+
+
+              route = {
+
+                  "research_question":
+                      content.get(
+                          "research_question"
+                      ),
+
+                  "approach":
+                      content.get(
+                          "approach"
+                      ),
+
+                  "proof_strategy":
+                      content.get(
+                          "proof_strategy"
+                      )
+
+              }
+
+
+              raw = json.dumps(
+                  route,
+                  ensure_ascii=False,
+                  sort_keys=True
+              )
+
+
+              raw = re.sub(
+                  r"\s+",
+                  " ",
+                  raw
+              ).strip().lower()
+
+
+              if len(raw) >= 20:
+
+                  routes.append(raw)
+
+
+          counts = Counter(routes)
+
+
+          blocked_routes = []
+
+
+          for route, count in counts.items():
+
+              if count >= 3:
+
+                  blocked_routes.append({
+
+                      "signature":
+                          route[:1000],
+
+                      "count":
+                          count,
+
+                      "blocked":
+                          True
 
                   })
-                );
 
 
-            return `
+          memory = {
 
-RESEARCH THEME:
+              "all_results_count":
+                  len(results),
 
-${theme}
+              "recent_results":
+                  results[:100],
 
-
-JOB TYPE:
-
-${job.job_type}
-
-
-REQUEST PAYLOAD:
-
-${JSON.stringify(
-  payload,
-  null,
-  2
-)}
-
-
-PREVIOUS RESEARCH RESULTS:
-
-${JSON.stringify(
-  previous,
-  null,
-  2
-)}
-
-
-RESEARCH TASK:
-
-Develop one concrete research direction.
-
-Do not merely summarize previous results.
-
-Try to produce a mathematically testable step.
-
-Check whether the proposed reasoning is actually valid.
-
-Actively search for counterexamples or hidden assumptions.
-
-If the previous route has already failed repeatedly,
-branch to a genuinely different route.
-
-The final JSON must distinguish verified mathematics
-from speculation.
-
-`;
+              "blocked_routes":
+                  blocked_routes
 
           }
 
 
-          /* =================================================
-             SAVE RESULT
-          ================================================= */
-
-          async function saveResult(
-            job,
-            result
-          ) {
-
-            const content =
-              result.content &&
-              typeof result.content === "object"
-                ? result.content
-                : {
-                    text:
-                      String(
-                        result.content ||
-                        ""
-                      )
-                  };
-
-
-            const row = {
-
-              project_id:
-                PROJECT_ID,
-
-              title:
-                String(
-                  result.title ||
-                  "Research result"
-                )
-                .slice(0, 500),
-
-              hypothesis:
-                String(
-                  result.hypothesis ||
-                  ""
-                ),
-
-              content,
-
-              status:
-                "completed",
-
-              evaluation:
-                ["⭕", "⭕️", "△", "❌"]
-                  .includes(
-                    result.evaluation
-                  )
-                  ? result.evaluation
-                  : "△",
-
-              confidence_level:
-                Math.max(
-                  0,
-                  Math.min(
-                    5,
-                    Number(
-                      result.confidence_level
-                    ) || 0
-                  )
-                ),
-
-              is_human_saved:
-                false
-
-            };
-
-
-            const rows =
-              await supabaseFetch(
-                `/rest/v1/research_results`,
-                {
-
-                  method:
-                    "POST",
-
-                  headers: {
-                    "Prefer":
-                      "return=representation"
-                  },
-
-                  body:
-                    JSON.stringify(
-                      row
-                    )
-
-                }
-              );
-
-
-            return rows?.[0] || null;
-
-          }
-
-
-          /* =================================================
-             PROCESS JOB
-          ================================================= */
-
-          async function processJob(
-            job
-          ) {
-
-            console.log(
-              `Processing job ${job.id}`
-            );
-
-
-            const previousResults =
-              await getPreviousResults();
-
-
-            const prompt =
-              buildResearchPrompt(
-                job,
-                previousResults
-              );
-
-
-            const raw =
-              await askAI(
-                SYSTEM_PROMPT,
-                prompt
-              );
-
-
-            const result =
-              parseModelJson(
-                raw
-              );
-
-
-            if (!result) {
-
-              throw new Error(
-                "AI returned invalid JSON"
-              );
-
-            }
-
-
-            const saved =
-              await saveResult(
-                job,
-                result
-              );
-
-
-            await updateJob(
-              job.id,
-              {
-
-                status:
-                  "completed",
-
-                result: {
-
-                  research_result_id:
-                    saved?.id || null,
-
-                  evaluation:
-                    result.evaluation,
-
-                  confidence_level:
-                    result.confidence_level,
-
-                  title:
-                    result.title
-
-                },
-
-                finished_at:
-                  new Date().toISOString(),
-
-                error_message:
-                  null
-
-              }
-            );
-
-
-            console.log(
-              `Completed job ${job.id}`
-            );
-
-          }
-
-
-          /* =================================================
-             MAIN
-          ================================================= */
-
-          async function main() {
-
-            console.log(
-              "Research AI Lab worker started."
-            );
-
-
-            let processed = 0;
-
-
-            while (
-              processed < MAX_JOBS
-            ) {
-
-              const job =
-                await getQueuedJob();
-
-
-              if (!job) {
-
-                console.log(
-                  "No queued jobs."
-                );
-
-                break;
-
-              }
-
-
-              const claimed =
-                await claimJob(
-                  job
-                );
-
-
-              if (!claimed) {
-
-                console.log(
-                  "Job was already claimed."
-                );
-
-                continue;
-
-              }
-
-
-              try {
-
-                await processJob(
-                  claimed
-                );
-
-              } catch (error) {
-
-                console.error(
-                  `Job ${claimed.id} failed:`,
-                  error
-                );
-
-
-                try {
-
-                  await updateJob(
-                    claimed.id,
-                    {
-
-                      status:
-                        "failed",
-
-                      finished_at:
-                        new Date().toISOString(),
-
-                      error_message:
-                        String(
-                          error.message ||
-                          error
-                        ).slice(
-                          0,
-                          4000
-                        )
-
-                    }
-                  );
-
-                } catch (
-                  updateError
-                ) {
-
-                  console.error(
-                    "Failed to update job:",
-                    updateError
-                  );
-
-                }
-
-              }
-
-
-              processed++;
-
-            }
-
-
-            console.log(
-              `Worker finished. Processed: ${processed}`
-            );
-
-          }
-
-
-          main()
-            .catch(
-              error => {
-
-                console.error(
-                  error
-                );
-
-                process.exit(
-                  1
-                );
-
-              }
-            );
-
-          NODE
+          with open(
+              "/tmp/ai_memory.json",
+              "w",
+              encoding="utf-8"
+          ) as f:
+
+              json.dump(
+                  memory,
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          PY
+
+
+      # =========================================================
+      # 5. 既存の
+      #    文献検索
+      #    AI呼び出し
+      #    JSON検証
+      #    結果保存
+      #    メモ更新
+      #    独立検証
+      #    完了処理
+      #
+      #    ↓
+      #    現在のresearch.ymlの
+      #    4〜16をそのまま継続
+      # =========================================================
