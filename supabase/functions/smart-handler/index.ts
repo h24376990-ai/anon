@@ -1,5 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+/* =========================================================
+   CORS
+========================================================= */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -10,17 +14,23 @@ const corsHeaders = {
     "application/json; charset=utf-8",
 };
 
+
 /* =========================================================
    CONFIG
 ========================================================= */
+
+const DEFAULT_PROJECT_ID =
+  "ab429192-27d2-47e4-9ad7-08b639f45120";
 
 const MAX_OUTPUT_TOKENS = 7000;
 const MAX_HISTORY = 40;
 const MAX_HISTORY_CHARS = 30000;
 const ROUTE_BLOCK_LIMIT = 3;
 
-const DEFAULT_PROJECT_ID =
-  "ab429192-27d2-47e4-9ad7-08b639f45120";
+
+/* =========================================================
+   MODELS
+========================================================= */
 
 const GEMINI_MODEL =
   "gemini-3.6-flash";
@@ -36,7 +46,7 @@ const OPENROUTER_MODEL =
 
 
 /* =========================================================
-   HELPERS
+   RESPONSE
 ========================================================= */
 
 function jsonResponse(
@@ -53,6 +63,10 @@ function jsonResponse(
 }
 
 
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function cleanText(
   value: unknown,
 ): string {
@@ -61,6 +75,20 @@ function cleanText(
     value === undefined
   ) {
     return "";
+  }
+
+  return String(value);
+}
+
+
+function errorText(
+  value: unknown,
+): string {
+
+  if (
+    value instanceof Error
+  ) {
+    return value.message;
   }
 
   return String(value);
@@ -110,7 +138,9 @@ function extractJson(
       )
       .trim();
 
+
   try {
+
     const parsed =
       JSON.parse(value);
 
@@ -121,15 +151,18 @@ function extractJson(
     ) {
       return parsed;
     }
+
   } catch {
     /* continue */
   }
+
 
   const first =
     value.indexOf("{");
 
   const last =
     value.lastIndexOf("}");
+
 
   if (
     first !== -1 &&
@@ -161,12 +194,13 @@ function extractJson(
     }
   }
 
+
   return null;
 }
 
 
 /* =========================================================
-   AI TEXT EXTRACTION
+   AI RESPONSE EXTRACTION
 ========================================================= */
 
 function getOpenAICompatibleText(
@@ -207,25 +241,7 @@ function getGeminiText(
 
 
 /* =========================================================
-   ERROR
-========================================================= */
-
-function errorText(
-  value: unknown,
-): string {
-
-  if (
-    value instanceof Error
-  ) {
-    return value.message;
-  }
-
-  return String(value);
-}
-
-
-/* =========================================================
-   SAFE FETCH
+   FETCH JSON
 ========================================================= */
 
 async function fetchJson(
@@ -243,6 +259,7 @@ async function fetchJson(
   const text =
     await response.text();
 
+
   if (!response.ok) {
 
     throw new Error(
@@ -250,12 +267,10 @@ async function fetchJson(
     );
   }
 
-  let data: any;
 
   try {
 
-    data =
-      JSON.parse(text);
+    return JSON.parse(text);
 
   } catch {
 
@@ -263,8 +278,6 @@ async function fetchJson(
       `${provider} returned invalid JSON.`,
     );
   }
-
-  return data;
 }
 
 
@@ -284,15 +297,16 @@ async function callGemini(
     ) ||
     GEMINI_MODEL;
 
+
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
 
   const data =
     await fetchJson(
       url,
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           "Content-Type":
@@ -338,7 +352,6 @@ async function callGemini(
 
               responseMimeType:
                 "application/json",
-
             },
 
           }),
@@ -346,10 +359,12 @@ async function callGemini(
       "Gemini",
     );
 
+
   const text =
     getGeminiText(
       data,
     );
+
 
   if (!text) {
 
@@ -357,6 +372,7 @@ async function callGemini(
       "Gemini returned an empty answer.",
     );
   }
+
 
   return {
     provider:
@@ -389,8 +405,7 @@ async function callOpenAICompatible(
     await fetchJson(
       url,
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
 
@@ -399,7 +414,6 @@ async function callOpenAICompatible(
 
           "Content-Type":
             "application/json",
-
         },
 
         body:
@@ -443,10 +457,12 @@ async function callOpenAICompatible(
       provider,
     );
 
+
   const text =
     getOpenAICompatibleText(
       data,
     );
+
 
   if (!text) {
 
@@ -454,6 +470,7 @@ async function callOpenAICompatible(
       `${provider} returned an empty answer.`,
     );
   }
+
 
   return {
     provider:
@@ -484,6 +501,7 @@ async function callCerebras(
       "CEREBRAS_MODEL",
     ) ||
     CEREBRAS_MODEL;
+
 
   return callOpenAICompatible(
 
@@ -518,6 +536,7 @@ async function callGroq(
       "GROQ_MODEL",
     ) ||
     GROQ_MODEL;
+
 
   return callOpenAICompatible(
 
@@ -554,13 +573,13 @@ async function callOpenRouter(
     ) ||
     OPENROUTER_MODEL;
 
+
   const response =
     await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
       {
 
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
 
@@ -575,7 +594,6 @@ async function callOpenRouter(
 
           "X-Title":
             "Research AI Lab",
-
         },
 
         body:
@@ -615,12 +633,13 @@ async function callOpenRouter(
             },
 
           }),
-
       },
     );
 
+
   const text =
     await response.text();
+
 
   if (!response.ok) {
 
@@ -628,6 +647,7 @@ async function callOpenRouter(
       `OpenRouter HTTP ${response.status}: ${text}`,
     );
   }
+
 
   let data: any;
 
@@ -643,10 +663,12 @@ async function callOpenRouter(
     );
   }
 
+
   const aiText =
     getOpenAICompatibleText(
       data,
     );
+
 
   if (!aiText) {
 
@@ -654,6 +676,7 @@ async function callOpenRouter(
       "OpenRouter returned an empty answer.",
     );
   }
+
 
   return {
 
@@ -667,7 +690,6 @@ async function callOpenRouter(
 
     raw:
       data,
-
   };
 }
 
@@ -683,17 +705,18 @@ async function callAI(
     groq?: string;
     openrouter?: string;
   },
+
   supabaseUrl: string,
+
   systemPrompt: string,
+
   userPrompt: string,
 ) {
 
   const attempts: any[] = [];
 
 
-  /* =======================================================
-     GEMINI
-  ======================================================= */
+  /* Gemini */
 
   if (keys.gemini) {
 
@@ -714,22 +737,17 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
-
         provider:
           "gemini",
 
         error:
           errorText(error),
-
       });
-
     }
   }
 
 
-  /* =======================================================
-     CEREBRAS
-  ======================================================= */
+  /* Cerebras */
 
   if (keys.cerebras) {
 
@@ -750,22 +768,17 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
-
         provider:
           "cerebras",
 
         error:
           errorText(error),
-
       });
-
     }
   }
 
 
-  /* =======================================================
-     GROQ
-  ======================================================= */
+  /* Groq */
 
   if (keys.groq) {
 
@@ -786,22 +799,17 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
-
         provider:
           "groq",
 
         error:
           errorText(error),
-
       });
-
     }
   }
 
 
-  /* =======================================================
-     OPENROUTER
-  ======================================================= */
+  /* OpenRouter */
 
   if (keys.openrouter) {
 
@@ -823,15 +831,12 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
-
         provider:
           "openrouter",
 
         error:
           errorText(error),
-
       });
-
     }
   }
 
@@ -873,7 +878,7 @@ Deno.serve(
     try {
 
       /* =====================================================
-         ENVIRONMENT
+         ENV
       ===================================================== */
 
       const supabaseUrl =
@@ -910,7 +915,7 @@ Deno.serve(
       if (!supabaseUrl) {
 
         throw new Error(
-          "SUPABASE_URL secret/environment variable is missing.",
+          "SUPABASE_URL is missing.",
         );
       }
 
@@ -918,7 +923,7 @@ Deno.serve(
       if (!serviceRoleKey) {
 
         throw new Error(
-          "SUPABASE_SERVICE_ROLE_KEY secret/environment variable is missing.",
+          "SUPABASE_SERVICE_ROLE_KEY is missing.",
         );
       }
 
@@ -957,7 +962,7 @@ Deno.serve(
 
 
       /* =====================================================
-         REQUEST
+         REQUEST BODY
       ===================================================== */
 
       let body: any = {};
@@ -982,49 +987,53 @@ Deno.serve(
 
 
       /*
-       * Workerからは message / theme / payload.theme
-       * のどれかでテーマが来る可能性がある。
+       * Workerからは message / theme の
+       * どちらで来ても受け取れる。
        */
 
       const message =
         cleanText(
           body?.message ??
           body?.theme ??
-          body?.payload?.theme ??
-          body?.payload?.message,
+          payload?.message ??
+          payload?.theme,
         ).trim();
 
 
       const projectId =
         cleanText(
           body?.project_id ??
-          body?.payload?.project_id ??
+          payload?.project_id ??
           DEFAULT_PROJECT_ID,
-        ).trim();
-
-
-      const researchRules =
-        payload?.research_rules ??
-        body?.research_rules ??
-        {};
-
-
-      const parentResultId =
-        cleanText(
-          payload?.parent_result_id ??
-          body?.parent_result_id,
         ).trim();
 
 
       const physicsEnabled =
         Boolean(
-          payload?.physics_enabled ??
           body?.physics_enabled ??
-          payload?.physical_reasoning ??
+          payload?.physics_enabled ??
           body?.physical_reasoning ??
+          payload?.physical_reasoning ??
           false,
         );
 
+
+      const researchRules =
+        body?.research_rules ??
+        payload?.research_rules ??
+        {};
+
+
+      const parentResultId =
+        cleanText(
+          body?.parent_result_id ??
+          payload?.parent_result_id,
+        ).trim();
+
+
+      /* =====================================================
+         MESSAGE VALIDATION
+      ===================================================== */
 
       if (!message) {
 
@@ -1034,7 +1043,7 @@ Deno.serve(
               false,
 
             error:
-              "message or theme is required.",
+              "Queued job has no message or theme",
           },
           400,
         );
@@ -1042,11 +1051,11 @@ Deno.serve(
 
 
       /* =====================================================
-         LOAD RESEARCH HISTORY
+         LOAD HISTORY
          
-         IMPORTANT:
-         research_results に description が存在しないため、
-         description は絶対に SELECT しない。
+         ★ 実際のDB列だけをSELECTする
+         
+         description 等は使わない
       ===================================================== */
 
       const {
@@ -1060,7 +1069,7 @@ Deno.serve(
             "research_results",
           )
           .select(
-            "id,title,status,hypothesis,calculation,verification,next_action,evidence,created_at",
+            "id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at",
           )
           .eq(
             "project_id",
@@ -1102,6 +1111,7 @@ Deno.serve(
       const hashBuffer =
         await crypto.subtle.digest(
           "SHA-256",
+
           encoder.encode(
             `${projectId}:${message}`,
           ),
@@ -1127,15 +1137,30 @@ Deno.serve(
 
 
       /* =====================================================
-         ROUTE REUSE CHECK
+         ROUTE COUNT
       ===================================================== */
+
+      /*
+       * content内に保存した
+       * ROUTE_KEY を確認する。
+       *
+       * 既存データにはroute情報がないため、
+       * その場合はカウントしない。
+       */
 
       const sameRouteCount =
         history.filter(
-          (item: any) =>
-            cleanText(
-              item?.evidence?.route_key,
-            ) === routeKey,
+          (item: any) => {
+
+            const content =
+              cleanText(
+                item?.content,
+              );
+
+            return content.includes(
+              `[ROUTE_KEY:${routeKey}]`,
+            );
+          },
         ).length;
 
 
@@ -1145,7 +1170,7 @@ Deno.serve(
 
 
       /* =====================================================
-         RESEARCH MEMORY
+         MEMORY
       ===================================================== */
 
       const memory =
@@ -1155,15 +1180,6 @@ Deno.serve(
               item: any,
               index: number,
             ) => {
-
-              const evidence =
-                item?.evidence ??
-                {};
-
-              const savedSummary =
-                cleanText(
-                  evidence?.summary,
-                );
 
               return [
                 `#${index + 1}`,
@@ -1180,39 +1196,20 @@ Deno.serve(
                   item?.status,
                 )}`,
 
-                `summary=${savedSummary}`,
+                `evaluation=${cleanText(
+                  item?.evaluation,
+                )}`,
+
+                `confidence_level=${cleanText(
+                  item?.confidence_level,
+                )}`,
 
                 `hypothesis=${cleanText(
                   item?.hypothesis,
                 )}`,
 
-                `calculation=${cleanText(
-                  item?.calculation,
-                )}`,
-
-                `verification=${cleanText(
-                  item?.verification,
-                )}`,
-
-                `next_action=${cleanText(
-                  item?.next_action,
-                )}`,
-
-                `route=${cleanText(
-                  evidence?.route,
-                )}`,
-
-                `route_key=${cleanText(
-                  evidence?.route_key,
-                )}`,
-
-                `route_count=${cleanText(
-                  evidence?.route_count,
-                )}`,
-
-                `evidence=${JSON.stringify(
-                  evidence?.items ??
-                  [],
+                `content=${cleanText(
+                  item?.content,
                 )}`,
 
               ].join("\n");
@@ -1231,199 +1228,201 @@ Deno.serve(
       ===================================================== */
 
       const systemPrompt = `
-あなたは Research AI Lab の数学研究AIです。
+あなたは Research AI Lab の自律数学研究AIです。
 
-目的は「未解決問題だから回答できない」と停止することではありません。
+目的は未解決問題について、
+可能な限り研究可能な部分を発見し、
+仮説・検証・反証・別アプローチを継続することです。
 
-未解決問題についても、
-証明・反証・部分結果・計算実験・構造的観察・
-新しい仮説・次の検証可能な手順を探索してください。
-
-ただし、証明されていないことを証明済みとは絶対に言わないでください。
+ただし、絶対に「証明されていないこと」を
+証明済みとして扱ってはいけません。
 
 ============================================================
-研究原則
+基本原則
 ============================================================
 
-1. 事実と推測を分離する。
-2. 証明できていない結論を証明済みと表現しない。
-3. 「分からない」で終了せず、次に試せる研究を出す。
-4. 過去の研究結果を必ず利用する。
-5. 過去の失敗を再利用し、同じ失敗を繰り返さない。
-6. 研究ルートを最低10種類の観点から検討する。
-7. 得られた結論を積極的に壊す。
-8. 反例を探す。
-9. 仮説の成立条件を探す。
-10. 仮説が成立しない条件も探す。
-11. 別の数学的表現へ変換する。
-12. 逆向きに考える。
-13. 背理法を検討する。
-14. 帰納・演繹を検討する。
-15. 数値実験・計算実験を検討する。
-16. 別証明・別導出を検討する。
-17. 既知の定理との接続を探す。
-18. 他分野との類推を検討する。
-19. 必要なら物理的直観を利用する。
-20. 最後に独立検証する。
+1. 事実と仮説を分離する。
+2. 証明されていないことを証明済みとしない。
+3. 未解決だからという理由だけで停止しない。
+4. 部分問題を発見する。
+5. 必要条件を探す。
+6. 十分条件を探す。
+7. 反例を探す。
+8. 境界ケースを調べる。
+9. 背理法を検討する。
+10. 逆向き推論を検討する。
+11. 帰納的構造を調べる。
+12. 演繹的構造を調べる。
+13. 別表現へ変換する。
+14. 既知の定理との接続を探す。
+15. 数値実験を検討する。
+16. 別証明を探す。
+17. 他分野との類推を検討する。
+18. 必ず結論を壊す方向を検討する。
+19. 過去の失敗を繰り返さない。
+20. 最後に独立した観点から検証する。
 
 ============================================================
 最低10アプローチ
 ============================================================
 
-必ず次の観点を候補として検討してください。
+最低10種類の研究アプローチを検討してください。
+
+候補：
 
 A. 直接証明
 B. 背理法
 C. 逆向き推論
 D. 反例探索
 E. 仮説破壊
-F. 特殊ケース・境界ケース
-G. 帰納的構造
-H. 演繹的構造
-I. 別表現への変換
-J. 数値・計算実験
-K. 別証明
-L. 既知定理との接続
-M. 他分野との類推
-N. 物理的モデル・物理演算
-O. 過去研究の失敗原因からの再設計
+F. 特殊ケース
+G. 境界ケース
+H. 帰納
+I. 演繹
+J. 別表現
+K. 数値実験
+L. 別証明
+M. 既知定理との接続
+N. 他分野との類推
+O. 物理的モデル
+P. 過去研究の失敗原因
 
-すべてが有効だとは限りません。
+すべてを実際に長く計算する必要はありません。
 
-有効性を比較し、
-有望なものを残し、
-失敗したものは「なぜ失敗したか」を明示してください。
+重要なのは、
+「どの方向が有望か」
+「なぜ他の方向が弱いか」
+を比較することです。
 
 ============================================================
-結論を壊す
+反証
 ============================================================
 
-研究途中で有力な結論が出ても、
-その結論をそのまま採用しないでください。
+有力な仮説を発見しても、
+そのまま採用してはいけません。
 
 必ず、
 
 ・反例
 ・境界例
+・特殊例
 ・隠れた仮定
 ・論理の飛躍
 ・未検証部分
 ・別解釈
-・反対方向の証明
-・数値的反証
+・反対方向の推論
 
 を確認してください。
 
 ============================================================
-過去研究メモリ
+過去研究
 ============================================================
 
-過去結果は「答え」ではありません。
+過去研究は答えではありません。
 
-過去結果から、
+過去研究から、
 
 ・失敗原因
-・共通する誤り
-・有効だった変形
-・有効だった検証
-・何度も失敗する条件
-・まだ試していない方向
+・有効だった方法
+・無効だった方法
+・未検証の方向
+・繰り返し失敗する条件
 
-を抽出して、新しい研究へ反映してください。
-
-============================================================
-物理モード
-============================================================
-
-物理モードが有効な場合、
-数学的問題を物理系・力学系・エネルギー・対称性・
-保存則・場・確率過程などの観点から考えてよいです。
-
-ただし物理的類推は数学的証明ではありません。
-
-物理的直観と数学的証明を明確に区別してください。
+を抽出してください。
 
 ============================================================
-未解決問題
+評価
 ============================================================
 
-未解決問題について、
+evaluation は必ず次の3つのいずれか：
 
-「現在証明されていない」
+"⭕"
+"△"
+"❌"
 
-という事実だけを理由に停止してはいけません。
+を使用してください。
 
-代わりに、
+⭕
+論理的に成立し、十分な根拠が確認できる部分。
 
-・部分問題
-・必要条件
-・十分条件
-・特殊ケース
-・反例探索
-・関連する定理
-・計算可能な実験
-・新しい補題候補
-・証明戦略
-・失敗した戦略
-・次の研究
+△
+興味深いが未検証、または証明が不足している部分。
 
-を出してください。
+❌
+反例・矛盾・計算ミス・論理破綻が確認された部分。
+
+重要：
+
+未解決問題について新しい仮説を出しただけなら、
+原則として「△」です。
+
+「面白そう」という理由だけで「⭕」にしてはいけません。
 
 ============================================================
-研究評価
+confidence_level
 ============================================================
 
-good:
-論理的に成立し、根拠が十分に確認できる。
+confidence_level は 1〜5 の整数。
 
-maybe:
-興味深いが未検証、または証明に不足がある。
+1 = ほぼ推測
+2 = 根拠はあるが未検証
+3 = 複数の根拠があり比較的有望
+4 = 強い検証がある
+5 = 数学的に十分確認された結果
 
-bad:
-明確な反例、矛盾、計算ミス、論理破綻がある。
+未解決問題の新規仮説を
+安易に4や5にしないでください。
 
-「面白そう」だけでgoodにしてはいけません。
+============================================================
+status
+============================================================
+
+status は研究状態として使用します。
+
+新規研究・未確定研究：
+"pending"
+
+研究結果として整理済み：
+"completed"
+
+明確な失敗：
+"failed"
+
+通常の新規研究では、
+まず "pending" を使用してください。
 
 ============================================================
 JSON
 ============================================================
 
-必ずJSONだけを返してください。
+必ず次のJSONだけを返してください。
 
 {
   "title": "研究タイトル",
-  "status": "good|maybe|bad",
-  "confidence": 0.0,
-  "confidence_basis": "信頼度の理由",
   "hypothesis": "中心仮説",
-  "route": "研究ルート識別子",
-  "summary": "研究結果の要約",
-  "calculation": "計算・導出・論理",
-  "verification": "検証内容",
-  "next_action": "次に試す研究",
-  "evidence": [
-    "根拠"
-  ],
+  "content": "研究内容。計算、論理、検証、反証、次の研究を含める",
+  "evaluation": "⭕|△|❌",
+  "confidence_level": 1,
+  "status": "pending",
   "approaches": [
     {
       "name": "アプローチ名",
       "idea": "何を試すか",
-      "result": "結果",
-      "failure_reason": "失敗した場合の原因",
+      "result": "どうなったか",
       "promising": true
     }
   ],
   "failure_analysis": [
-    "共通する失敗原因"
+    "失敗原因"
   ],
   "destructive_checks": [
-    "結論を壊すために行った確認"
+    "結論を壊すための検証"
   ],
   "new_hypotheses": [
     "派生仮説"
   ],
   "independent_verification": "独立検証",
-  "physical_reasoning": "物理モードを使用した場合の内容"
+  "physical_reasoning": "物理モードを使用した場合のみ記述"
 }
 `.trim();
 
@@ -1437,49 +1436,42 @@ JSON
 
 ${message}
 
-
 【PROJECT】
 
 ${projectId}
-
 
 【物理モード】
 
 ${
   physicsEnabled
-    ? "ON: 物理演算・物理的類推を研究補助として使用してください。"
-    : "OFF: 数学的推論を中心にしてください。"
+    ? "ON"
+    : "OFF"
 }
-
 
 【同一ルート使用回数】
 
 ${sameRouteCount}
 
-
 【同一ルート制限】
 
 ${
   routeBlocked
-    ? "このルートは3回以上使用済みです。同じルートを繰り返さず、別のルートを必ず選択してください。"
-    : "このルートはまだ制限されていません。"
+    ? "このルートは3回以上使用済み。必ず別ルートを選択してください。"
+    : "このルートはまだ3回未満です。"
 }
-
 
 【研究ルートキー】
 
 ${routeKey}
 
-
-【過去の研究】
+【過去研究】
 
 ${
   memory ||
   "まだ研究履歴はありません。"
 }
 
-
-【追加ルール】
+【研究ルール】
 
 ${JSON.stringify(
   researchRules,
@@ -1487,43 +1479,42 @@ ${JSON.stringify(
   2,
 )}
 
-
 【再検証対象】
 
 ${
-  parentResultId
-    ? parentResultId
-    : "なし"
+  parentResultId ||
+  "なし"
 }
-
 
 ============================================================
 
 研究を開始してください。
 
-まず複数のアプローチを比較し、
-最低10種類の観点を検討してください。
+最低10種類のアプローチを比較してください。
 
-その中から有望な方向を選び、
-その方向をさらに掘り下げてください。
+過去研究がある場合、
+失敗原因と成功した考え方を必ず利用してください。
 
-そして必ず、その結論を壊す方向にも考えてください。
+その後、最も有望な方向を掘り下げてください。
 
-「未解決なので証明できない」
-だけで終了することは禁止します。
+さらに、その結論を壊す方向から検証してください。
 
-証明できない場合でも、
-最も価値のある部分結果と次の検証手順を残してください。
+未解決問題の場合、
+証明できないこと自体を失敗とはしません。
 
-過去研究に共通する失敗原因があれば抽出し、
-今回の研究設計を改善してください。
+価値のある部分結果、
+必要条件、
+十分条件、
+反例候補、
+新しい補題候補、
+次に検証できる研究を残してください。
 
-JSON以外の文章は出力しないでください。
+JSON以外を出力しないでください。
 `.trim();
 
 
       /* =====================================================
-         AI
+         AI CALL
       ===================================================== */
 
       const ai =
@@ -1541,7 +1532,6 @@ JSON以外の文章は出力しないでください。
 
             openrouter:
               openRouterKey,
-
           },
 
           supabaseUrl,
@@ -1554,7 +1544,7 @@ JSON以外の文章は出力しないでください。
 
 
       /* =====================================================
-         PARSE
+         PARSE AI RESULT
       ===================================================== */
 
       let research =
@@ -1564,8 +1554,8 @@ JSON以外の文章は出力しないでください。
 
 
       /*
-       * JSONにならなかった場合でも
-       * 研究を完全消失させない。
+       * JSON解析失敗でも
+       * 結果を完全に捨てない。
        */
 
       if (!research) {
@@ -1575,41 +1565,28 @@ JSON以外の文章は出力しないでください。
           title:
             "AI研究回答",
 
-          status:
-            "maybe",
-
-          confidence:
-            0,
-
-          confidence_basis:
-            "AI回答を構造化JSONとして取得できませんでした。",
-
           hypothesis:
             "",
 
-          route:
-            "unstructured_response",
-
-          summary:
+          content:
             ai.text,
 
-          calculation:
-            "",
+          evaluation:
+            "△",
 
-          verification:
-            "未検証",
+          confidence_level:
+            1,
 
-          next_action:
-            "回答を構造化して再検証する。",
-
-          evidence:
-            [],
+          status:
+            "pending",
 
           approaches:
             [],
 
           failure_analysis:
-            [],
+            [
+              "AI回答を構造化JSONとして解析できませんでした。",
+            ],
 
           destructive_checks:
             [],
@@ -1622,9 +1599,7 @@ JSON以外の文章は出力しないでください。
 
           physical_reasoning:
             "",
-
         };
-
       }
 
 
@@ -1639,92 +1614,164 @@ JSON以外の文章は出力しないでください。
         "AI研究回答";
 
 
-      const statusRaw =
-        cleanText(
-          research.status,
-        )
-          .toLowerCase();
-
-
-      const status =
-        [
-          "good",
-          "maybe",
-          "bad",
-        ].includes(
-          statusRaw,
-        )
-          ? statusRaw
-          : "maybe";
-
-
-      const confidenceRaw =
-        Number(
-          research.confidence,
-        );
-
-
-      const confidence =
-        Number.isFinite(
-          confidenceRaw,
-        )
-          ? clamp(
-              confidenceRaw,
-              0,
-              1,
-            )
-          : 0;
-
-
       const hypothesis =
         cleanText(
           research.hypothesis,
         );
 
 
-      const calculation =
+      let content =
         cleanText(
-          research.calculation,
+          research.content,
         );
 
 
-      const verification =
+      if (!content) {
+
+        content =
+          ai.text;
+      }
+
+
+      /* =====================================================
+         EVALUATION
+      ===================================================== */
+
+      const evaluationRaw =
         cleanText(
-          research.verification,
+          research.evaluation,
         );
 
 
-      const nextAction =
-        cleanText(
-          research.next_action,
+      let evaluation =
+        "△";
+
+
+      if (
+        evaluationRaw ===
+        "⭕" ||
+        evaluationRaw ===
+        "△" ||
+        evaluationRaw ===
+        "❌"
+      ) {
+
+        evaluation =
+          evaluationRaw;
+      }
+
+
+      /* =====================================================
+         CONFIDENCE
+      ===================================================== */
+
+      const confidenceRaw =
+        Number(
+          research.confidence_level,
+        );
+
+
+      let confidenceLevel =
+        Number.isFinite(
+          confidenceRaw,
+        )
+          ? Math.round(
+              confidenceRaw,
+            )
+          : 2;
+
+
+      confidenceLevel =
+        clamp(
+          confidenceLevel,
+          1,
+          5,
         );
 
 
       /*
-       * description カラムは存在しない。
-       *
-       * summary は evidence.summary に保存する。
+       * 新規未検証研究なのに
+       * AIが4/5を出した場合の過大評価を防ぐ。
        */
 
-      const summary =
-        cleanText(
-          research.summary,
-        ) ||
-        cleanText(
-          research.description,
-        ) ||
-        ai.text;
+      if (
+        evaluation === "△" &&
+        confidenceLevel > 3
+      ) {
+
+        confidenceLevel =
+          3;
+      }
 
 
-      const route =
-        cleanText(
-          research.route,
-        ) ||
-        "multi_approach";
+      if (
+        evaluation === "❌"
+      ) {
+
+        confidenceLevel =
+          Math.min(
+            confidenceLevel,
+            2,
+          );
+      }
 
 
       /* =====================================================
-         ARRAYS
+         STATUS
+      ===================================================== */
+
+      const statusRaw =
+        cleanText(
+          research.status,
+        ).toLowerCase();
+
+
+      let status =
+        "pending";
+
+
+      if (
+        statusRaw ===
+        "completed"
+      ) {
+
+        status =
+          "completed";
+
+      } else if (
+        statusRaw ===
+        "failed"
+      ) {
+
+        status =
+          "failed";
+
+      } else {
+
+        status =
+          "pending";
+      }
+
+
+      /*
+       * 新規研究で「⭕」でも、
+       * AI研究結果として即座にcompletedにはしない。
+       *
+       * ただし明確な失敗ならfailed。
+       */
+
+      if (
+        evaluation ===
+        "❌"
+      ) {
+
+        status =
+          "failed";
+      }
+
+
+      /* =====================================================
+         STRUCTURED CONTENT
       ===================================================== */
 
       const approaches =
@@ -1759,14 +1806,10 @@ JSON以外の文章は出力しないでください。
           : [];
 
 
-      const evidence =
-        Array.isArray(
-          research.evidence,
-        )
-          ? research.evidence
-          : research.evidence
-            ? [research.evidence]
-            : [];
+      const independentVerification =
+        cleanText(
+          research.independent_verification,
+        );
 
 
       const physicalReasoning =
@@ -1775,94 +1818,92 @@ JSON以外の文章は出力しないでください。
         );
 
 
-      const independentVerification =
-        cleanText(
-          research.independent_verification,
-        );
+      /*
+       * DBのcontentには、
+       * 後からAIが過去研究を利用できるよう
+       * 研究メタ情報も一緒に保存する。
+       */
 
+      const contentForDB = [
 
-      /* =====================================================
-         EVIDENCE OBJECT
-      ===================================================== */
+        `[ROUTE_KEY:${routeKey}]`,
 
-      const evidenceObject = {
+        `[ROUTE_COUNT:${sameRouteCount + 1}]`,
 
-        /*
-         * 重要:
-         * summaryをdescriptionカラムの代わりに
-         * JSONB内へ保存する。
-         */
+        `【研究内容】`,
 
-        summary:
-          summary,
+        content,
 
-        items:
-          evidence,
+        ``,
 
-        route:
-          route,
+        `【研究アプローチ】`,
 
-        route_key:
-          routeKey,
-
-        route_count:
-          sameRouteCount + 1,
-
-        confidence:
-          confidence,
-
-        confidence_basis:
-          cleanText(
-            research.confidence_basis,
-          ),
-
-        approaches:
+        JSON.stringify(
           approaches,
-
-        failure_analysis:
-          failureAnalysis,
-
-        destructive_checks:
-          destructiveChecks,
-
-        new_hypotheses:
-          newHypotheses,
-
-        independent_verification:
-          independentVerification,
-
-        physical_reasoning:
-          physicalReasoning,
-
-        provider:
-          ai.provider,
-
-        model:
-          ai.model,
-
-        fallback_attempts:
-          ai.attempts,
-
-        parent_result_id:
-          parentResultId ||
           null,
+          2,
+        ),
 
-        physics_enabled:
-          physicsEnabled,
+        ``,
 
-        research_rules:
-          researchRules,
+        `【失敗分析】`,
 
-      };
+        JSON.stringify(
+          failureAnalysis,
+          null,
+          2,
+        ),
+
+        ``,
+
+        `【破壊的検証】`,
+
+        JSON.stringify(
+          destructiveChecks,
+          null,
+          2,
+        ),
+
+        ``,
+
+        `【新しい仮説】`,
+
+        JSON.stringify(
+          newHypotheses,
+          null,
+          2,
+        ),
+
+        ``,
+
+        `【独立検証】`,
+
+        independentVerification,
+
+        ``,
+
+        `【物理的推論】`,
+
+        physicalReasoning,
+
+        ``,
+
+        `【AI PROVIDER】`,
+
+        ai.provider,
+
+        ``,
+
+        `【AI MODEL】`,
+
+        ai.model,
+
+      ].join("\n");
 
 
       /* =====================================================
          SAVE
       ===================================================== */
-
-      /*
-       * description は絶対に送らない。
-       */
 
       const {
         data:
@@ -1882,27 +1923,32 @@ JSON以外の文章は出力しないでください。
             title:
               title,
 
-            status:
-              status,
-
             hypothesis:
               hypothesis,
 
-            calculation:
-              calculation,
+            content:
+              contentForDB,
 
-            verification:
-              verification,
+            status:
+              status,
 
-            next_action:
-              nextAction,
+            evaluation:
+              evaluation,
 
-            evidence:
-              evidenceObject,
+            confidence_level:
+              confidenceLevel,
+
+            /*
+             * AIは勝手に保存済みにしない。
+             * 人間が保存した結果だけtrue。
+             */
+
+            is_human_saved:
+              false,
 
           })
           .select(
-            "id,project_id,title,status,hypothesis,calculation,verification,next_action,evidence,created_at",
+            "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at",
           )
           .single();
 
@@ -1932,11 +1978,14 @@ JSON以外の文章は出力しないでください。
         ok:
           true,
 
-        blocked:
-          false,
+        processed:
+          true,
 
-        answer:
-          ai.text,
+        saved:
+          true,
+
+        result_id:
+          savedResult.id,
 
         provider:
           ai.provider,
@@ -1947,64 +1996,46 @@ JSON以外の文章は出力しないでください。
         fallback_attempts:
           ai.attempts,
 
-        saved:
-          true,
-
-        result_id:
-          savedResult.id,
-
         research: {
 
           id:
             savedResult.id,
 
+          project_id:
+            savedResult.project_id,
+
           title:
             savedResult.title,
-
-          /*
-           * DBのdescriptionは使わない。
-           */
-
-          description:
-            summary,
-
-          status:
-            savedResult.status,
-
-          confidence:
-            confidence,
-
-          confidence_basis:
-            cleanText(
-              research.confidence_basis,
-            ),
 
           hypothesis:
             savedResult.hypothesis,
 
-          route:
-            route,
+          content:
+            savedResult.content,
+
+          status:
+            savedResult.status,
+
+          evaluation:
+            savedResult.evaluation,
+
+          confidence_level:
+            savedResult.confidence_level,
+
+          is_human_saved:
+            savedResult.is_human_saved,
+
+          created_at:
+            savedResult.created_at,
+
+          updated_at:
+            savedResult.updated_at,
 
           route_key:
             routeKey,
 
           route_count:
             sameRouteCount + 1,
-
-          summary:
-            summary,
-
-          calculation:
-            savedResult.calculation,
-
-          verification:
-            savedResult.verification,
-
-          next_action:
-            savedResult.next_action,
-
-          evidence:
-            evidence,
 
           approaches:
             approaches,
@@ -2023,9 +2054,6 @@ JSON以外の文章は出力しないでください。
 
           physical_reasoning:
             physicalReasoning,
-
-          physics_enabled:
-            physicsEnabled,
 
         },
 
@@ -2047,6 +2075,9 @@ JSON以外の文章は出力しないでください。
           ok:
             false,
 
+          processed:
+            false,
+
           error:
             error instanceof Error
               ? error.message
@@ -2063,8 +2094,6 @@ JSON以外の文章は出力しないでください。
         500,
 
       );
-
     }
-
   },
 );
