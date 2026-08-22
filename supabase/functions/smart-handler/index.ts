@@ -19,19 +19,53 @@ const corsHeaders = {
    CONFIG
 ========================================================= */
 
-const DEFAULT_PROJECT_ID =
-  "ab429192-27d2-47e4-9ad7-08b639f45120";
+/*
+ * ここは今回かなり重要。
+ *
+ * 7000 → 4000
+ *
+ * 研究結果が長くなりすぎることを防ぎ、
+ * OpenRouterのクレジット消費と
+ * GroqのTPM制限に引っかかりにくくする。
+ */
+const MAX_OUTPUT_TOKENS = 4000;
 
-const MAX_OUTPUT_TOKENS = 7000;
-const MAX_HISTORY = 40;
-const MAX_HISTORY_CHARS = 30000;
-
-const ROUTE_BLOCK_LIMIT = 3;
 
 /*
- * 1回の研究結果から作る次ジョブは必ず1件だけ。
+ * AIに渡す過去研究数。
+ *
+ * 40件だと入力が巨大になりやすいため、
+ * 直近15件に制限。
+ */
+const MAX_HISTORY = 15;
+
+
+/*
+ * 過去研究をAIへ渡す最大文字数。
+ *
+ * 30000 → 16000
+ */
+const MAX_HISTORY_CHARS = 16000;
+
+
+/*
+ * 同じ研究ルートを3回以上繰り返さない。
+ */
+const ROUTE_BLOCK_LIMIT = 3;
+
+
+/*
+ * 1つの研究結果から作る次ジョブは1件だけ。
  */
 const MAX_NEXT_JOBS_PER_RESULT = 1;
+
+
+/*
+ * 1研究あたりのアプローチ数。
+ *
+ * AIには最低10種類を要求する。
+ */
+const MIN_APPROACHES = 10;
 
 
 /* =========================================================
@@ -130,6 +164,7 @@ function extractJson(
   let value =
     text.trim();
 
+
   value =
     value
       .replace(
@@ -147,6 +182,10 @@ function extractJson(
       .trim();
 
 
+  /*
+   * 完全なJSONとして解析。
+   */
+
   try {
 
     const parsed =
@@ -162,9 +201,14 @@ function extractJson(
     }
 
   } catch {
-    /* continue */
+    /* 続行 */
   }
 
+
+  /*
+   * 回答の中から最初の { ～ 最後の }
+   * を探してJSONとして解析。
+   */
 
   const first =
     value.indexOf("{");
@@ -185,6 +229,7 @@ function extractJson(
         last + 1,
       );
 
+
     try {
 
       const parsed =
@@ -200,7 +245,7 @@ function extractJson(
       }
 
     } catch {
-      /* continue */
+      /* 続行 */
     }
   }
 
@@ -232,6 +277,7 @@ function getGeminiText(
   const parts =
     data?.candidates?.[0]?.content?.parts;
 
+
   if (
     Array.isArray(parts)
   ) {
@@ -245,6 +291,7 @@ function getGeminiText(
       )
       .join("");
   }
+
 
   return "";
 }
@@ -265,6 +312,7 @@ async function fetchJson(
       url,
       options,
     );
+
 
   const text =
     await response.text();
@@ -385,6 +433,7 @@ async function callGemini(
 
 
   return {
+
     provider:
       "gemini",
 
@@ -451,6 +500,11 @@ async function callOpenAICompatible(
 
             ],
 
+            /*
+             * OpenAI互換API。
+             *
+             * 出力上限を4000へ統一。
+             */
             max_completion_tokens:
               MAX_OUTPUT_TOKENS,
 
@@ -483,6 +537,7 @@ async function callOpenAICompatible(
 
 
   return {
+
     provider:
       provider.toLowerCase(),
 
@@ -589,7 +644,8 @@ async function callOpenRouter(
       "https://openrouter.ai/api/v1/chat/completions",
       {
 
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
 
@@ -631,6 +687,11 @@ async function callOpenRouter(
 
             ],
 
+            /*
+             * OpenRouter用。
+             *
+             * 7000 → 4000
+             */
             max_tokens:
               MAX_OUTPUT_TOKENS,
 
@@ -661,6 +722,7 @@ async function callOpenRouter(
 
 
   let data: any;
+
 
   try {
 
@@ -727,9 +789,9 @@ async function callAI(
   const attempts: any[] = [];
 
 
-  /* -------------------------------------------------------
+  /* =======================================================
      GEMINI
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (keys.gemini) {
 
@@ -742,6 +804,7 @@ async function callAI(
           userPrompt,
         );
 
+
       return {
         ...result,
         attempts,
@@ -750,19 +813,21 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
+
         provider:
           "gemini",
 
         error:
           errorText(error),
+
       });
     }
   }
 
 
-  /* -------------------------------------------------------
+  /* =======================================================
      CEREBRAS
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (keys.cerebras) {
 
@@ -775,6 +840,7 @@ async function callAI(
           userPrompt,
         );
 
+
       return {
         ...result,
         attempts,
@@ -783,19 +849,21 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
+
         provider:
           "cerebras",
 
         error:
           errorText(error),
+
       });
     }
   }
 
 
-  /* -------------------------------------------------------
+  /* =======================================================
      GROQ
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (keys.groq) {
 
@@ -808,6 +876,7 @@ async function callAI(
           userPrompt,
         );
 
+
       return {
         ...result,
         attempts,
@@ -816,19 +885,21 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
+
         provider:
           "groq",
 
         error:
           errorText(error),
+
       });
     }
   }
 
 
-  /* -------------------------------------------------------
+  /* =======================================================
      OPENROUTER
-  ------------------------------------------------------- */
+  ======================================================= */
 
   if (keys.openrouter) {
 
@@ -842,6 +913,7 @@ async function callAI(
           userPrompt,
         );
 
+
       return {
         ...result,
         attempts,
@@ -850,18 +922,22 @@ async function callAI(
     } catch (error) {
 
       attempts.push({
+
         provider:
           "openrouter",
 
         error:
           errorText(error),
+
       });
     }
   }
 
 
   throw new Error(
+
     `すべてのAIプロバイダーで研究実行に失敗しました: ${JSON.stringify(attempts)}`,
+
   );
 }
 
@@ -870,30 +946,14 @@ async function callAI(
    NEXT RESEARCH THEME
 ========================================================= */
 
-/*
- * 現在の研究結果から、
- * 次に実行する研究テーマを1つだけ決める。
- *
- * 優先順位：
- *
- * 1. new_hypotheses
- * 2. promising approaches
- * 3. destructive_checks
- * 4. failure_analysis
- *
- * これにより、
- *
- * 「研究A」
- * ↓
- * 「研究Aから生まれた仮説B」
- *
- * のように研究を連鎖させる。
- */
-
 function buildNextResearchTheme(
   message: string,
   research: Record<string, unknown>,
 ): string {
+
+  /*
+   * 1. 新しい仮説
+   */
 
   const newHypotheses =
     Array.isArray(
@@ -912,22 +972,37 @@ function buildNextResearchTheme(
         hypothesis,
       ).trim();
 
+
     if (text) {
 
       return [
+
         "前研究から派生した新しい研究課題。",
+
         "",
+
         `元の研究テーマ：${message}`,
+
         "",
+
         `派生仮説：${text}`,
+
         "",
+
         "この仮説を数学的に検証してください。",
+
         "必要条件・十分条件・反例・境界ケース・論理の飛躍を確認してください。",
+
         "未検証の場合は△として扱い、次に検証可能な具体的課題を提示してください。",
+
       ].join("\n");
     }
   }
 
+
+  /*
+   * 2. 有望アプローチ
+   */
 
   const approaches =
     Array.isArray(
@@ -945,24 +1020,30 @@ function buildNextResearchTheme(
       !approach ||
       typeof approach !== "object"
     ) {
+
       continue;
     }
+
 
     const item =
       approach as Record<string, unknown>;
 
+
     const promising =
       item.promising === true;
+
 
     const idea =
       cleanText(
         item.idea,
       ).trim();
 
+
     const name =
       cleanText(
         item.name,
       ).trim();
+
 
     if (
       promising &&
@@ -970,19 +1051,33 @@ function buildNextResearchTheme(
     ) {
 
       return [
+
         "前研究から選択された有望アプローチを深掘りしてください。",
+
         "",
+
         `元の研究テーマ：${message}`,
+
         "",
+
         `アプローチ：${name}`,
+
         `研究案：${idea}`,
+
         "",
+
         "この方向を具体的な数学的問題へ分解してください。",
+
         "証明・反証・必要条件・十分条件・反例・境界ケースを検討してください。",
+
       ].join("\n");
     }
   }
 
+
+  /*
+   * 3. 破壊的検証
+   */
 
   const destructiveChecks =
     Array.isArray(
@@ -1001,21 +1096,35 @@ function buildNextResearchTheme(
         check,
       ).trim();
 
+
     if (text) {
 
       return [
+
         "前研究の結論を破壊する検証を実行してください。",
+
         "",
+
         `元の研究テーマ：${message}`,
+
         "",
+
         `破壊的検証：${text}`,
+
         "",
+
         "反例が存在するか確認してください。",
+
         "存在しない場合も、なぜ反例が構成できないのかを検討してください。",
+
       ].join("\n");
     }
   }
 
+
+  /*
+   * 4. 失敗分析
+   */
 
   const failureAnalysis =
     Array.isArray(
@@ -1034,33 +1143,48 @@ function buildNextResearchTheme(
         failure,
       ).trim();
 
+
     if (text) {
 
       return [
+
         "前研究で確認された失敗原因を再検証してください。",
+
         "",
+
         `元の研究テーマ：${message}`,
+
         "",
+
         `失敗原因：${text}`,
+
         "",
+
         "この失敗原因を回避できる別アプローチを探してください。",
+
       ].join("\n");
     }
   }
 
 
   /*
-   * AIが次候補を何も返さなかった場合の
-   * 最低限のフォールバック。
+   * 5. 最終フォールバック
    */
 
   return [
+
     "前研究を別の観点から再検証してください。",
+
     "",
+
     `元の研究テーマ：${message}`,
+
     "",
+
     "前研究とは異なるアプローチを使用してください。",
+
     "直接証明だけでなく、背理法・逆向き推論・反例探索・特殊ケース・境界ケース・既知定理との接続を検討してください。",
+
   ].join("\n");
 }
 
@@ -1068,12 +1192,6 @@ function buildNextResearchTheme(
 /* =========================================================
    CHECK EXISTING NEXT JOB
 ========================================================= */
-
-/*
- * 同じプロジェクトで、
- * すでに同一テーマの queued / running ジョブがある場合、
- * 重複作成しない。
- */
 
 async function nextJobAlreadyExists(
   supabase: any,
@@ -1121,8 +1239,7 @@ async function nextJobAlreadyExists(
 
 
   const normalizedTarget =
-    nextTheme
-      .trim();
+    nextTheme.trim();
 
 
   for (
@@ -1130,6 +1247,7 @@ async function nextJobAlreadyExists(
   ) {
 
     let payload: any = {};
+
 
     if (
       job?.payload &&
@@ -1180,7 +1298,7 @@ async function nextJobAlreadyExists(
 
 
 /* =========================================================
-   CREATE NEXT JOB
+   CREATE NEXT RESEARCH JOB
 ========================================================= */
 
 async function createNextResearchJob(
@@ -1197,7 +1315,7 @@ async function createNextResearchJob(
 }> {
 
   /*
-   * 次研究テーマを決定。
+   * 1研究結果につき次ジョブ1件。
    */
 
   const nextTheme =
@@ -1210,6 +1328,7 @@ async function createNextResearchJob(
   if (!nextTheme.trim()) {
 
     return {
+
       created:
         false,
 
@@ -1221,6 +1340,7 @@ async function createNextResearchJob(
 
       reason:
         "No next research theme was generated.",
+
     };
   }
 
@@ -1243,7 +1363,9 @@ async function createNextResearchJob(
       "Next research job already exists. Skipping duplicate.",
     );
 
+
     return {
+
       created:
         false,
 
@@ -1255,19 +1377,13 @@ async function createNextResearchJob(
 
       reason:
         "Duplicate queued/running job already exists.",
+
     };
   }
 
 
   /*
-   * research_jobs.payload
-   *
-   * kick-worker は
-   *
-   * payload.theme
-   * payload.message
-   *
-   * のどちらでも拾える。
+   * 次ジョブpayload。
    */
 
   const nextPayload = {
@@ -1303,9 +1419,7 @@ async function createNextResearchJob(
 
 
   /*
-   * priority は通常の自動研究として 0。
-   *
-   * 既存の高優先度ジョブを邪魔しない。
+   * DBへqueued jobを作成。
    */
 
   const {
@@ -1413,25 +1527,30 @@ Deno.serve(
           "SUPABASE_URL",
         );
 
+
       const serviceRoleKey =
         Deno.env.get(
           "SUPABASE_SERVICE_ROLE_KEY",
         );
+
 
       const geminiKey =
         Deno.env.get(
           "GEMINI_API_KEY",
         );
 
+
       const cerebrasKey =
         Deno.env.get(
           "CEREBRAS_API_KEY",
         );
 
+
       const groqKey =
         Deno.env.get(
           "GROQ_API_KEY",
         );
+
 
       const openRouterKey =
         Deno.env.get(
@@ -1478,11 +1597,13 @@ Deno.serve(
           serviceRoleKey,
           {
             auth: {
+
               autoRefreshToken:
                 false,
 
               persistSession:
                 false,
+
             },
           },
         );
@@ -1493,6 +1614,7 @@ Deno.serve(
       ===================================================== */
 
       let body: any = {};
+
 
       try {
 
@@ -1513,7 +1635,7 @@ Deno.serve(
 
 
       /*
-       * Workerからは
+       * Workerから
        *
        * message
        * theme
@@ -1523,28 +1645,34 @@ Deno.serve(
 
       const message =
         cleanText(
+
           body?.message ??
           body?.theme ??
           payload?.message ??
           payload?.theme,
+
         ).trim();
 
 
       const projectId =
         cleanText(
+
           body?.project_id ??
           payload?.project_id ??
           DEFAULT_PROJECT_ID,
+
         ).trim();
 
 
       const physicsEnabled =
         Boolean(
+
           body?.physics_enabled ??
           payload?.physics_enabled ??
           body?.physical_reasoning ??
           payload?.physical_reasoning ??
           false,
+
         );
 
 
@@ -1556,8 +1684,10 @@ Deno.serve(
 
       const parentResultId =
         cleanText(
+
           body?.parent_result_id ??
           payload?.parent_result_id,
+
         ).trim();
 
 
@@ -1568,6 +1698,7 @@ Deno.serve(
       if (!message) {
 
         return jsonResponse(
+
           {
             ok:
               false,
@@ -1575,7 +1706,9 @@ Deno.serve(
             error:
               "Queued job has no message or theme",
           },
+
           400,
+
         );
       }
 
@@ -1587,15 +1720,19 @@ Deno.serve(
       const {
         data:
           previousResults,
+
         error:
           previousError,
+
       } =
         await supabase
           .from(
             "research_results",
           )
           .select(
+
             "id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at",
+
           )
           .eq(
             "project_id",
@@ -1636,21 +1773,26 @@ Deno.serve(
 
       const hashBuffer =
         await crypto.subtle.digest(
+
           "SHA-256",
 
           encoder.encode(
             `${projectId}:${message}`,
           ),
+
         );
 
 
       const routeKey =
         Array.from(
+
           new Uint8Array(
             hashBuffer,
           ),
+
         )
           .map(
+
             (b) =>
               b
                 .toString(16)
@@ -1658,6 +1800,7 @@ Deno.serve(
                   2,
                   "0",
                 ),
+
           )
           .join("");
 
@@ -1668,6 +1811,7 @@ Deno.serve(
 
       const sameRouteCount =
         history.filter(
+
           (item: any) => {
 
             const content =
@@ -1675,10 +1819,12 @@ Deno.serve(
                 item?.content,
               );
 
+
             return content.includes(
               `[ROUTE_KEY:${routeKey}]`,
             );
           },
+
         ).length;
 
 
@@ -1691,15 +1837,24 @@ Deno.serve(
          MEMORY
       ===================================================== */
 
+      /*
+       * ここも負荷削減の重要ポイント。
+       *
+       * 直近15件のみ。
+       * さらに合計16000文字で切る。
+       */
+
       const memory =
         history
           .map(
+
             (
               item: any,
               index: number,
             ) => {
 
               return [
+
                 `#${index + 1}`,
 
                 `id=${cleanText(
@@ -1733,6 +1888,7 @@ Deno.serve(
               ].join("\n");
 
             },
+
           )
           .join("\n\n")
           .slice(
@@ -1749,10 +1905,10 @@ Deno.serve(
 あなたは Research AI Lab の自律数学研究AIです。
 
 目的は未解決問題について、
-可能な限り研究可能な部分を発見し、
+研究可能な部分を発見し、
 仮説・検証・反証・別アプローチを継続することです。
 
-ただし、絶対に「証明されていないこと」を
+絶対に、証明されていないことを
 証明済みとして扱ってはいけません。
 
 ============================================================
@@ -1781,10 +1937,10 @@ Deno.serve(
 20. 最後に独立した観点から検証する。
 
 ============================================================
-最低10アプローチ
+研究アプローチ
 ============================================================
 
-最低10種類の研究アプローチを検討してください。
+最低10種類の研究アプローチを比較してください。
 
 候補：
 
@@ -1805,19 +1961,18 @@ N. 他分野との類推
 O. 物理的モデル
 P. 過去研究の失敗原因
 
-すべてを実際に長く計算する必要はありません。
+すべてを完全に実行できなくてもよい。
 
 重要なのは、
-「どの方向が有望か」
-「なぜ他の方向が弱いか」
+どの方向が有望か、
+なぜ他の方向が弱いか、
 を比較することです。
 
 ============================================================
 反証
 ============================================================
 
-有力な仮説を発見しても、
-そのまま採用してはいけません。
+有力な仮説を発見しても、そのまま採用してはいけません。
 
 必ず、
 
@@ -1858,8 +2013,6 @@ evaluation は必ず次の3つのいずれか：
 "△"
 "❌"
 
-を使用してください。
-
 ⭕
 論理的に成立し、十分な根拠が確認できる部分。
 
@@ -1872,15 +2025,13 @@ evaluation は必ず次の3つのいずれか：
 重要：
 
 未解決問題について新しい仮説を出しただけなら、
-原則として「△」です。
+原則として△です。
 
-「面白そう」という理由だけで「⭕」にしてはいけません。
+「面白そう」という理由だけで⭕にしないでください。
 
 ============================================================
 confidence_level
 ============================================================
-
-confidence_level は 1〜5 の整数。
 
 1 = ほぼ推測
 2 = 根拠はあるが未検証
@@ -1888,14 +2039,11 @@ confidence_level は 1〜5 の整数。
 4 = 強い検証がある
 5 = 数学的に十分確認された結果
 
-未解決問題の新規仮説を
-安易に4や5にしないでください。
+未解決問題の新規仮説を安易に4や5にしないでください。
 
 ============================================================
 status
 ============================================================
-
-status は研究状態として使用します。
 
 新規研究・未確定研究：
 "pending"
@@ -1906,8 +2054,18 @@ status は研究状態として使用します。
 明確な失敗：
 "failed"
 
-通常の新規研究では、
-まず "pending" を使用してください。
+通常の新規研究ではまず"pending"を使用してください。
+
+============================================================
+重要：出力サイズ
+============================================================
+
+研究内容は十分に具体的にしてください。
+
+ただし、不要な長文説明や同じ内容の繰り返しは避けてください。
+
+10以上のアプローチを比較しつつ、
+重要な論理・検証・反証を優先してください。
 
 ============================================================
 JSON
@@ -1942,6 +2100,8 @@ JSON
   "independent_verification": "独立検証",
   "physical_reasoning": "物理モードを使用した場合のみ記述"
 }
+
+JSON以外を出力しないでください。
 `.trim();
 
 
@@ -2011,7 +2171,7 @@ ${
 最低10種類のアプローチを比較してください。
 
 過去研究がある場合、
-失敗原因と成功した考え方を必ず利用してください。
+失敗原因と成功した考え方を利用してください。
 
 その後、最も有望な方向を掘り下げてください。
 
@@ -2026,6 +2186,9 @@ ${
 反例候補、
 新しい補題候補、
 次に検証できる研究を残してください。
+
+不要な繰り返しを避け、
+限られた出力量を数学的な検証に優先して使ってください。
 
 JSON以外を出力しないでください。
 `.trim();
@@ -2072,8 +2235,8 @@ JSON以外を出力しないでください。
 
 
       /*
-       * JSON解析失敗でも
-       * 結果を完全に捨てない。
+       * JSON解析に失敗しても
+       * 完全に研究結果を捨てない。
        */
 
       if (!research) {
@@ -2117,6 +2280,7 @@ JSON以外を出力しないでください。
 
           physical_reasoning:
             "",
+
         };
       }
 
@@ -2207,6 +2371,10 @@ JSON以外を出力しないでください。
         );
 
 
+      /*
+       * △なら信頼度4・5を許可しない。
+       */
+
       if (
         evaluation === "△" &&
         confidenceLevel > 3
@@ -2216,6 +2384,10 @@ JSON以外を出力しないでください。
           3;
       }
 
+
+      /*
+       * ❌なら最大2。
+       */
 
       if (
         evaluation === "❌"
@@ -2267,7 +2439,7 @@ JSON以外を出力しないでください。
 
 
       /*
-       * ❌ は明確な失敗として failed。
+       * ❌は明確な失敗。
        */
 
       if (
@@ -2416,8 +2588,10 @@ JSON以外を出力しないでください。
       const {
         data:
           savedResult,
+
         error:
           saveError,
+
       } =
         await supabase
           .from(
@@ -2451,7 +2625,9 @@ JSON以外を出力しないでください。
 
           })
           .select(
+
             "id,project_id,title,hypothesis,content,status,evaluation,confidence_level,is_human_saved,created_at,updated_at",
+
           )
           .single();
 
@@ -2513,12 +2689,8 @@ JSON以外を出力しないでください。
       } catch (nextJobError) {
 
         /*
-         * 重要：
-         *
-         * 研究結果そのものは既に保存済み。
-         *
-         * 次ジョブ作成だけ失敗しても、
-         * 今回の研究結果を失敗扱いにはしない。
+         * 研究結果保存後に次ジョブだけ失敗しても、
+         * 今回の研究結果は成功として残す。
          */
 
         console.error(
