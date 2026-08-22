@@ -25,7 +25,13 @@ const DEFAULT_PROJECT_ID =
 const MAX_OUTPUT_TOKENS = 7000;
 const MAX_HISTORY = 40;
 const MAX_HISTORY_CHARS = 30000;
+
 const ROUTE_BLOCK_LIMIT = 3;
+
+/*
+ * 1回の研究結果から作る次ジョブは必ず1件だけ。
+ */
+const MAX_NEXT_JOBS_PER_RESULT = 1;
 
 
 /* =========================================================
@@ -70,6 +76,7 @@ function jsonResponse(
 function cleanText(
   value: unknown,
 ): string {
+
   if (
     value === null ||
     value === undefined
@@ -100,6 +107,7 @@ function clamp(
   min: number,
   max: number,
 ): number {
+
   return Math.max(
     min,
     Math.min(max, value),
@@ -149,6 +157,7 @@ function extractJson(
       typeof parsed === "object" &&
       !Array.isArray(parsed)
     ) {
+
       return parsed;
     }
 
@@ -186,6 +195,7 @@ function extractJson(
         typeof parsed === "object" &&
         !Array.isArray(parsed)
       ) {
+
         return parsed;
       }
 
@@ -633,6 +643,7 @@ async function callOpenRouter(
             },
 
           }),
+
       },
     );
 
@@ -716,7 +727,9 @@ async function callAI(
   const attempts: any[] = [];
 
 
-  /* Gemini */
+  /* -------------------------------------------------------
+     GEMINI
+  ------------------------------------------------------- */
 
   if (keys.gemini) {
 
@@ -747,7 +760,9 @@ async function callAI(
   }
 
 
-  /* Cerebras */
+  /* -------------------------------------------------------
+     CEREBRAS
+  ------------------------------------------------------- */
 
   if (keys.cerebras) {
 
@@ -778,7 +793,9 @@ async function callAI(
   }
 
 
-  /* Groq */
+  /* -------------------------------------------------------
+     GROQ
+  ------------------------------------------------------- */
 
   if (keys.groq) {
 
@@ -809,7 +826,9 @@ async function callAI(
   }
 
 
-  /* OpenRouter */
+  /* -------------------------------------------------------
+     OPENROUTER
+  ------------------------------------------------------- */
 
   if (keys.openrouter) {
 
@@ -844,6 +863,514 @@ async function callAI(
   throw new Error(
     `すべてのAIプロバイダーで研究実行に失敗しました: ${JSON.stringify(attempts)}`,
   );
+}
+
+
+/* =========================================================
+   NEXT RESEARCH THEME
+========================================================= */
+
+/*
+ * 現在の研究結果から、
+ * 次に実行する研究テーマを1つだけ決める。
+ *
+ * 優先順位：
+ *
+ * 1. new_hypotheses
+ * 2. promising approaches
+ * 3. destructive_checks
+ * 4. failure_analysis
+ *
+ * これにより、
+ *
+ * 「研究A」
+ * ↓
+ * 「研究Aから生まれた仮説B」
+ *
+ * のように研究を連鎖させる。
+ */
+
+function buildNextResearchTheme(
+  message: string,
+  research: Record<string, unknown>,
+): string {
+
+  const newHypotheses =
+    Array.isArray(
+      research.new_hypotheses,
+    )
+      ? research.new_hypotheses
+      : [];
+
+
+  for (
+    const hypothesis of newHypotheses
+  ) {
+
+    const text =
+      cleanText(
+        hypothesis,
+      ).trim();
+
+    if (text) {
+
+      return [
+        "前研究から派生した新しい研究課題。",
+        "",
+        `元の研究テーマ：${message}`,
+        "",
+        `派生仮説：${text}`,
+        "",
+        "この仮説を数学的に検証してください。",
+        "必要条件・十分条件・反例・境界ケース・論理の飛躍を確認してください。",
+        "未検証の場合は△として扱い、次に検証可能な具体的課題を提示してください。",
+      ].join("\n");
+    }
+  }
+
+
+  const approaches =
+    Array.isArray(
+      research.approaches,
+    )
+      ? research.approaches
+      : [];
+
+
+  for (
+    const approach of approaches
+  ) {
+
+    if (
+      !approach ||
+      typeof approach !== "object"
+    ) {
+      continue;
+    }
+
+    const item =
+      approach as Record<string, unknown>;
+
+    const promising =
+      item.promising === true;
+
+    const idea =
+      cleanText(
+        item.idea,
+      ).trim();
+
+    const name =
+      cleanText(
+        item.name,
+      ).trim();
+
+    if (
+      promising &&
+      (idea || name)
+    ) {
+
+      return [
+        "前研究から選択された有望アプローチを深掘りしてください。",
+        "",
+        `元の研究テーマ：${message}`,
+        "",
+        `アプローチ：${name}`,
+        `研究案：${idea}`,
+        "",
+        "この方向を具体的な数学的問題へ分解してください。",
+        "証明・反証・必要条件・十分条件・反例・境界ケースを検討してください。",
+      ].join("\n");
+    }
+  }
+
+
+  const destructiveChecks =
+    Array.isArray(
+      research.destructive_checks,
+    )
+      ? research.destructive_checks
+      : [];
+
+
+  for (
+    const check of destructiveChecks
+  ) {
+
+    const text =
+      cleanText(
+        check,
+      ).trim();
+
+    if (text) {
+
+      return [
+        "前研究の結論を破壊する検証を実行してください。",
+        "",
+        `元の研究テーマ：${message}`,
+        "",
+        `破壊的検証：${text}`,
+        "",
+        "反例が存在するか確認してください。",
+        "存在しない場合も、なぜ反例が構成できないのかを検討してください。",
+      ].join("\n");
+    }
+  }
+
+
+  const failureAnalysis =
+    Array.isArray(
+      research.failure_analysis,
+    )
+      ? research.failure_analysis
+      : [];
+
+
+  for (
+    const failure of failureAnalysis
+  ) {
+
+    const text =
+      cleanText(
+        failure,
+      ).trim();
+
+    if (text) {
+
+      return [
+        "前研究で確認された失敗原因を再検証してください。",
+        "",
+        `元の研究テーマ：${message}`,
+        "",
+        `失敗原因：${text}`,
+        "",
+        "この失敗原因を回避できる別アプローチを探してください。",
+      ].join("\n");
+    }
+  }
+
+
+  /*
+   * AIが次候補を何も返さなかった場合の
+   * 最低限のフォールバック。
+   */
+
+  return [
+    "前研究を別の観点から再検証してください。",
+    "",
+    `元の研究テーマ：${message}`,
+    "",
+    "前研究とは異なるアプローチを使用してください。",
+    "直接証明だけでなく、背理法・逆向き推論・反例探索・特殊ケース・境界ケース・既知定理との接続を検討してください。",
+  ].join("\n");
+}
+
+
+/* =========================================================
+   CHECK EXISTING NEXT JOB
+========================================================= */
+
+/*
+ * 同じプロジェクトで、
+ * すでに同一テーマの queued / running ジョブがある場合、
+ * 重複作成しない。
+ */
+
+async function nextJobAlreadyExists(
+  supabase: any,
+  projectId: string,
+  nextTheme: string,
+): Promise<boolean> {
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "research_jobs",
+      )
+      .select(
+        "id,status,payload",
+      )
+      .eq(
+        "project_id",
+        projectId,
+      )
+      .in(
+        "status",
+        [
+          "queued",
+          "running",
+        ],
+      )
+      .limit(
+        100,
+      );
+
+
+  if (error) {
+
+    throw new Error(
+      `Failed to check existing next jobs: ${error.message}`,
+    );
+  }
+
+
+  const jobs =
+    data ?? [];
+
+
+  const normalizedTarget =
+    nextTheme
+      .trim();
+
+
+  for (
+    const job of jobs
+  ) {
+
+    let payload: any = {};
+
+    if (
+      job?.payload &&
+      typeof job.payload === "object"
+    ) {
+
+      payload =
+        job.payload;
+
+    } else if (
+      typeof job?.payload === "string"
+    ) {
+
+      try {
+
+        payload =
+          JSON.parse(
+            job.payload,
+          );
+
+      } catch {
+
+        payload = {};
+      }
+    }
+
+
+    const existingTheme =
+      cleanText(
+        payload?.theme ??
+        payload?.message,
+      ).trim();
+
+
+    if (
+      existingTheme &&
+      existingTheme ===
+        normalizedTarget
+    ) {
+
+      return true;
+    }
+  }
+
+
+  return false;
+}
+
+
+/* =========================================================
+   CREATE NEXT JOB
+========================================================= */
+
+async function createNextResearchJob(
+  supabase: any,
+  projectId: string,
+  parentResultId: string,
+  currentMessage: string,
+  research: Record<string, unknown>,
+): Promise<{
+  created: boolean;
+  job_id: string | null;
+  theme: string;
+  reason?: string;
+}> {
+
+  /*
+   * 次研究テーマを決定。
+   */
+
+  const nextTheme =
+    buildNextResearchTheme(
+      currentMessage,
+      research,
+    );
+
+
+  if (!nextTheme.trim()) {
+
+    return {
+      created:
+        false,
+
+      job_id:
+        null,
+
+      theme:
+        "",
+
+      reason:
+        "No next research theme was generated.",
+    };
+  }
+
+
+  /*
+   * 重複チェック。
+   */
+
+  const exists =
+    await nextJobAlreadyExists(
+      supabase,
+      projectId,
+      nextTheme,
+    );
+
+
+  if (exists) {
+
+    console.log(
+      "Next research job already exists. Skipping duplicate.",
+    );
+
+    return {
+      created:
+        false,
+
+      job_id:
+        null,
+
+      theme:
+        nextTheme,
+
+      reason:
+        "Duplicate queued/running job already exists.",
+    };
+  }
+
+
+  /*
+   * research_jobs.payload
+   *
+   * kick-worker は
+   *
+   * payload.theme
+   * payload.message
+   *
+   * のどちらでも拾える。
+   */
+
+  const nextPayload = {
+
+    theme:
+      nextTheme,
+
+    message:
+      nextTheme,
+
+    project_id:
+      projectId,
+
+    parent_result_id:
+      parentResultId,
+
+    auto_generated:
+      true,
+
+    source:
+      "smart-handler",
+
+    created_from_result_id:
+      parentResultId,
+
+    created_from_message:
+      currentMessage,
+
+    created_at:
+      new Date().toISOString(),
+
+  };
+
+
+  /*
+   * priority は通常の自動研究として 0。
+   *
+   * 既存の高優先度ジョブを邪魔しない。
+   */
+
+  const {
+    data,
+    error,
+  } =
+    await supabase
+      .from(
+        "research_jobs",
+      )
+      .insert({
+
+        project_id:
+          projectId,
+
+        status:
+          "queued",
+
+        priority:
+          0,
+
+        payload:
+          nextPayload,
+
+      })
+      .select(
+        "id,status,project_id,priority,payload,created_at",
+      )
+      .single();
+
+
+  if (error) {
+
+    throw new Error(
+      `Failed to create next research job: ${error.message}`,
+    );
+  }
+
+
+  if (!data) {
+
+    throw new Error(
+      "Next research job was created but could not be returned.",
+    );
+  }
+
+
+  console.log(
+    "Next research job created:",
+    data.id,
+  );
+
+
+  return {
+
+    created:
+      true,
+
+    job_id:
+      data.id,
+
+    theme:
+      nextTheme,
+
+  };
 }
 
 
@@ -975,7 +1502,6 @@ Deno.serve(
       } catch {
 
         body = {};
-
       }
 
 
@@ -987,8 +1513,12 @@ Deno.serve(
 
 
       /*
-       * Workerからは message / theme の
-       * どちらで来ても受け取れる。
+       * Workerからは
+       *
+       * message
+       * theme
+       *
+       * のどちらでも受け取る。
        */
 
       const message =
@@ -1052,10 +1582,6 @@ Deno.serve(
 
       /* =====================================================
          LOAD HISTORY
-         
-         ★ 実際のDB列だけをSELECTする
-         
-         description 等は使わない
       ===================================================== */
 
       const {
@@ -1139,14 +1665,6 @@ Deno.serve(
       /* =====================================================
          ROUTE COUNT
       ===================================================== */
-
-      /*
-       * content内に保存した
-       * ROUTE_KEY を確認する。
-       *
-       * 既存データにはroute情報がないため、
-       * その場合はカウントしない。
-       */
 
       const sameRouteCount =
         history.filter(
@@ -1689,11 +2207,6 @@ JSON以外を出力しないでください。
         );
 
 
-      /*
-       * 新規未検証研究なのに
-       * AIが4/5を出した場合の過大評価を防ぐ。
-       */
-
       if (
         evaluation === "△" &&
         confidenceLevel > 3
@@ -1754,10 +2267,7 @@ JSON以外を出力しないでください。
 
 
       /*
-       * 新規研究で「⭕」でも、
-       * AI研究結果として即座にcompletedにはしない。
-       *
-       * ただし明確な失敗ならfailed。
+       * ❌ は明確な失敗として failed。
        */
 
       if (
@@ -1818,11 +2328,9 @@ JSON以外を出力しないでください。
         );
 
 
-      /*
-       * DBのcontentには、
-       * 後からAIが過去研究を利用できるよう
-       * 研究メタ情報も一緒に保存する。
-       */
+      /* =====================================================
+         CONTENT FOR DB
+      ===================================================== */
 
       const contentForDB = [
 
@@ -1902,7 +2410,7 @@ JSON以外を出力しないでください。
 
 
       /* =====================================================
-         SAVE
+         SAVE RESEARCH RESULT
       ===================================================== */
 
       const {
@@ -1938,11 +2446,6 @@ JSON以外を出力しないでください。
             confidence_level:
               confidenceLevel,
 
-            /*
-             * AIは勝手に保存済みにしない。
-             * 人間が保存した結果だけtrue。
-             */
-
             is_human_saved:
               false,
 
@@ -1966,6 +2469,81 @@ JSON以外を出力しないでください。
         throw new Error(
           "Research result was saved but could not be returned.",
         );
+      }
+
+
+      /* =====================================================
+         CREATE NEXT JOB
+      ===================================================== */
+
+      let nextJob = {
+
+        created:
+          false,
+
+        job_id:
+          null as string | null,
+
+        theme:
+          "",
+
+        reason:
+          "",
+
+      };
+
+
+      try {
+
+        nextJob =
+          await createNextResearchJob(
+
+            supabase,
+
+            projectId,
+
+            savedResult.id,
+
+            message,
+
+            research,
+
+          );
+
+      } catch (nextJobError) {
+
+        /*
+         * 重要：
+         *
+         * 研究結果そのものは既に保存済み。
+         *
+         * 次ジョブ作成だけ失敗しても、
+         * 今回の研究結果を失敗扱いにはしない。
+         */
+
+        console.error(
+          "Failed to create next research job:",
+          nextJobError,
+        );
+
+
+        nextJob = {
+
+          created:
+            false,
+
+          job_id:
+            null,
+
+          theme:
+            "",
+
+          reason:
+            errorText(
+              nextJobError,
+            ),
+
+        };
       }
 
 
@@ -1995,6 +2573,9 @@ JSON以外を出力しないでください。
 
         fallback_attempts:
           ai.attempts,
+
+        next_job:
+          nextJob,
 
         research: {
 
